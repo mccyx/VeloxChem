@@ -45,6 +45,9 @@ jobs:
           ulimit -a
           ulimit -s unlimited
           lscpu | egrep 'Thread|Core|Socket|^CPU\('
+          echo "=== System packages ==="
+          sudo apt-get update -y
+          sudo apt-get install -y libeigen3-dev libboost-all-dev
           echo "=== GNU Compiler ==="
           #mpicc --version
           #mpicc -show
@@ -65,8 +68,6 @@ jobs:
           CC=gcc MPICC=mpicc python -m pip install mpi4py --no-binary=mpi4py
           CC=gcc CXX=g++ python -m pip install MDAnalysis
           git config --global --add safe.directory $PWD
-          sudo apt-get update -y
-          sudo apt-get install -y libeigen3-dev libboost-all-dev
           CXX=g++ python -m pip install git+https://github.com/VeloxChem/PyFraME.git
           python -m pip install dftd4 xtb
           python -m pip install openmm rdkit pymbar
