@@ -62,8 +62,8 @@ jobs:
           python -V
           echo "=== Eigen and Boost ==="
           git clone --depth 1 -b 3.4.0 https://gitlab.com/libeigen/eigen.git
-          cmake -Seigen -Bbuild -DCMAKE_INSTALL_PREFIX=$HOME/Software &> /dev/null
-          cmake --build build --target install --parallel &> /dev/null
+          cmake -Seigen -Bbuild -DCMAKE_INSTALL_PREFIX="$HOME/Software" &> /dev/null
+          cmake --build build --target install --parallel
           rm -rf eigen build
           git clone https://github.com/boostorg/boost.git -b boost-1.79.0 boost_src --depth 1
           cd boost_src
@@ -71,7 +71,7 @@ jobs:
           git submodule update --depth 1 -q --init libs/math
           python tools/boostdep/depinst/depinst.py -X test -g "--depth 1" math
           cmake -S. -Bbuild -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/Software" &> /dev/null
-          cmake --build build --target install --parallel &> /dev/null
+          cmake --build build --target install --parallel
           cd ..
           rm -rf boost_src
           echo "=== Python dependencies ==="
@@ -84,7 +84,7 @@ jobs:
           python -m pip install dftd4 xtb
           python -m pip install openmm rdkit pymbar
           echo "=== VeloxChem build ==="
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$HOME/Software:/usr/local
+          export CMAKE_PREFIX_PATH=$HOME/Software:/usr/local:$CMAKE_PREFIX_PATH
           SKBUILD_CONFIGURE_OPTIONS="-DCMAKE_CXX_COMPILER=g++" \
             python -m pip install -v .[test,qmmm]
           echo "=== VeloxChem test ==="
