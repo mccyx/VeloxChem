@@ -67,7 +67,7 @@ message(STATUS "Found Libxc: ${_loc} (found version \"${Libxc_VERSION}\")")
 # Eigen
 find_package(Eigen3 CONFIG REQUIRED)
 # Boost headers
-find_package(Boost 1.79.0 CONFIG REQUIRED)
+find_package(Boost 1.90.0 CONFIG REQUIRED)
 
 # VeloxChem-specific configuration
 include(${PROJECT_SOURCE_DIR}/cmake/custom/vlx.cmake)
