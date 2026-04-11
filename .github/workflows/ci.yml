@@ -46,8 +46,8 @@ jobs:
           ulimit -s unlimited
           lscpu | egrep 'Thread|Core|Socket|^CPU\('
           echo "=== System packages ==="
-          sudo apt-get update -y
-          sudo apt-get install -y libeigen3-dev libboost-all-dev
+          apt-get update -y
+          apt-get install -y libeigen3-dev libboost-all-dev
           echo "=== GNU Compiler ==="
           #mpicc --version
           #mpicc -show
