@@ -2,8 +2,9 @@
 
 This note accompanies:
 
-- `tools/scalarize_kernel.py`
+- `tools/kernel_opt_pipeline.py`
 - `tools/kernel_ir.py`
+- `tools/README.kernel-opt.md`
 
 The current goal is to move from regex-only rewriting toward a small compiler-style optimizer for generated CUDA kernels.
 
@@ -249,6 +250,158 @@ Future compiler-like upgrades should add stronger reasoning for:
 - barrier-aware region boundaries
 - value invalidation after synchronization points
 
+## Why Scalarization Often Helps More Than Naive CSE
+
+The current DDDD results are a good example of an important optimizer lesson:
+
+- reducing source-level duplication is not the same thing as reducing runtime cost
+- a transformation is only useful if it improves the compiled kernel, not just the source text
+
+### The Bundled Scalar Pipeline
+
+The current public source-shaping entry point is the bundled `scalar` pipeline.
+
+Internally it still performs three ordered transformations:
+
+- scalarization
+- indexed-access hoisting
+- direct-index rewrite
+
+That public bundling matches the current empirical picture:
+
+- scalarization is the enabling first step
+- indexed-access hoisting is usually the dominant performance contributor
+- direct-index rewrite is mostly cleanup and canonicalization
+
+So the implementation remains factored, but the user-facing model is now:
+
+- run `scalar` by default
+- optionally add `regroup` next
+- optionally add `cse` afterward for experiments
+
+Within that bundled stage, scalarization helps the current kernels in two related ways.
+
+First, it replaces tiny arrays like:
+
+```cpp
+const float PQ_f[3] = {...};
+```
+
+with scalar values such as:
+
+```cpp
+const float PQ0_f = ...;
+const float PQ1_f = ...;
+const float PQ2_f = ...;
+```
+
+Second, indexed-access hoisting replaces repeated dynamic reads like:
+
+```cpp
+PQ_f[a0]
+```
+
+with one alias such as:
+
+```cpp
+const float PQ_a0_f = ...;
+```
+
+and then reuses that alias.
+
+The bundled scalar pipeline often helps because it reduces:
+
+- repeated index-selection logic
+- repeated address-like expression materialization
+- the number of distinct subexpressions the backend must reason about
+
+It can also shorten some live ranges, because the backend sees a simpler value graph.
+
+### Why Regroup Is Separate From CSE
+
+The current pass stack now distinguishes:
+
+- `regroup`
+- `cse`
+
+because they optimize for different outcomes.
+
+The first `regroup` pass is intentionally narrow and structural. It targets repeated multiplicative power chains such as:
+
+- `S1_f * S1_f`
+- `S2_f * S2_f * S2_f`
+- `inv_S4_f * inv_S4_f * inv_S4_f * inv_S4_f * inv_S4_f`
+
+and rewrites them into local aliases like:
+
+- `S1_f_pow2`
+- `S2_f_pow3`
+- `inv_S4_f_pow5`
+
+This is meant as a low-risk source-shaping step for long ERI prefactors.
+
+By contrast, the current `cse` pass extracts exact repeated parenthesized subexpressions. That can reduce source-level duplication, but it can also extend live ranges and increase register pressure.
+
+So the intended public hierarchy is:
+
+- `scalar`: default and broadly useful
+- `regroup`: narrow structural cleanup
+- `cse`: experimental exact-subexpression extraction
+
+For the current FP32 kernels, that effect is visible in resource usage:
+
+- `DDDD34_FP32`: `REG 93`
+- `DDDD34_FP32_scalarized`: `REG 78`
+- `DDDD34_FP32_auto_scalarized`: `REG 77`
+- `DDDD21_FP32`: `REG 78`
+- `DDDD21_FP32_scalarized`: `REG 64`
+
+### Why Naive CSE Can Be Neutral Or Worse
+
+Naive CSE usually assumes:
+
+- fewer repeated operations is better
+
+But on GPUs, another cost matters just as much:
+
+- how many values must remain live at the same time
+
+If a pass extracts a repeated expression into:
+
+```cpp
+const float cse0_f = ...;
+```
+
+then `cse0_f` may need to stay live across a larger slice of the kernel than the original inlined pieces did.
+
+That means:
+
+- fewer source-level repeats
+- but potentially longer live ranges
+- and therefore more registers
+
+This is exactly why a small CSE pass can sometimes make performance worse even when it "looks cleaner."
+
+In the current `DDDD34` experiment:
+
+- `DDDD34_FP32_auto_scalarized`: `REG 77`
+- `DDDD34_FP32_auto_scalarized_cse`: `REG 80`
+
+with no `STACK` or `LOCAL` growth.
+
+That suggests the current exact local CSE is not causing obvious spills. Instead, it is likely extending live ranges enough to slightly worsen register pressure and scheduling/occupancy behavior.
+
+### The Low-Level Reading Rule
+
+For the current kernels, a practical interpretation rule is:
+
+- if a transform lowers `REG` without increasing `LOCAL`, it is usually promising
+- if `LOCAL` or `STACK` becomes nonzero, inspect for spills first
+- if `SHARED` jumps sharply, treat it as an occupancy tradeoff rather than a free optimization
+- if CSE raises `REG`, it may still help, but it now has to compensate for that extra pressure with a larger reduction in real work
+
+This is why `ptxas` resource usage is a useful intermediate checkpoint between source rewriting and full performance measurements.
+
 ## Why This Matters For VeloxChem
 
 The generated kernels contain many expressions like:
@@ -284,5 +437,5 @@ Those are later steps.
 For now, the design goal is:
 
 - a trustworthy local analysis layer
-- safe block-local scalarization and hoisting
-- a foundation for later CSE and expression-splitting passes
+- a safe default scalar pipeline for tiny arrays and indexed accesses
+- a foundation for later regrouping, CSE, and expression-splitting passes

@@ -11372,16 +11372,25 @@ computeFockOnGPU(const              CMolecule& molecule,
             const dim3 zero_num_blocks((dd_prim_pair_count_local + zero_threads_per_block.x - 1) / zero_threads_per_block.x);
             const dim3 dd_dispatch_threads_per_block(TILE_DIM_SMALL, TILE_DIM_LARGE);
             const dim3 dd_dispatch_num_blocks((dd_prim_pair_count_local + dd_dispatch_threads_per_block.x - 1) / dd_dispatch_threads_per_block.x, 1);
-            double *d_mat_J2_2kernels, *d_mat_J2_ref, *d_mat_J3_sep34, *d_mat_J3_merged34, *d_mat_J3_scalarized34, *d_mat_J3_auto34, *d_mat_J3_old21, *d_mat_J3_scalarized21, *d_mat_J3_shared21;
+            double *d_mat_J2_2kernels, *d_mat_J2_ref, *d_mat_J3_sep34, *d_mat_J3_merged34, *d_mat_J3_scalarized34, *d_mat_J3_auto34_scalarize_only, *d_mat_J3_auto34_scalarize_hoist, *d_mat_J3_auto34_scalarize_rewrite, *d_mat_J3_auto34, *d_mat_J3_auto34_cse, *d_mat_J3_old21, *d_mat_J3_scalarized21, *d_mat_J3_auto21, *d_mat_J3_auto21_cse, *d_mat_J3_shared21, *d_mat_J3_old26, *d_mat_J3_auto26, *d_mat_J3_auto26_regroup;
             gpuSafe(gpuMalloc(&d_mat_J2_2kernels, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J2_ref, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_sep34, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_merged34, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_scalarized34, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto34_scalarize_only, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto34_scalarize_hoist, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto34_scalarize_rewrite, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_auto34, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto34_cse, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_old21, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_scalarized21, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto21, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto21_cse, sizeof(double) * dd_prim_pair_count_local));
             gpuSafe(gpuMalloc(&d_mat_J3_shared21, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_old26, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto26, sizeof(double) * dd_prim_pair_count_local));
+            gpuSafe(gpuMalloc(&d_mat_J3_auto26_regroup, sizeof(double) * dd_prim_pair_count_local));
             double *d_mat_D2;
             gpuSafe(gpuMalloc(&d_mat_D2, sizeof(double) * dd_prim_pair_count));
             gpuSafe(gpuMemcpyAsync(d_mat_D2, dd_mat_D.data(), dd_prim_pair_count * sizeof(double), gpuMemcpyHostToDevice, stream));
@@ -11390,10 +11399,19 @@ computeFockOnGPU(const              CMolecule& molecule,
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_sep34, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_merged34, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_scalarized34, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto34_scalarize_only, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto34_scalarize_hoist, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto34_scalarize_rewrite, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto34, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto34_cse, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_old21, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_scalarized21, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto21, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto21_cse, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_shared21, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_old26, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto26, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(d_mat_J3_auto26_regroup, static_cast<uint32_t>(dd_prim_pair_count_local));
 
             const double tau_precision = 1e-6;
             uint32_t* d_prec_cut_ij_tile = nullptr;
@@ -11974,6 +11992,57 @@ computeFockOnGPU(const              CMolecule& molecule,
             }
 
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto34_scalarize_only, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD34_FP32_auto_scalarize_only<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto34_scalarize_only, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD34_FP32_auto_scalarize_only",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto34_scalarize_hoist, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD34_FP32_auto_scalarize_hoist<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto34_scalarize_hoist, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD34_FP32_auto_scalarize_hoist",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto34_scalarize_rewrite, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD34_FP32_auto_scalarize_rewrite<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto34_scalarize_rewrite, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD34_FP32_auto_scalarize_rewrite",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
                                d_mat_J3_auto34, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpuSafe(gpuStreamSynchronize(stream));
             {
@@ -11987,6 +12056,23 @@ computeFockOnGPU(const              CMolecule& molecule,
                 const auto end = std::chrono::steady_clock::now();
                 append_kernel_timing(
                     "DDDD34_FP32_auto_scalarized",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto34_cse, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD34_FP32_auto_scalarized_cse<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto34_cse, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD34_FP32_auto_scalarized_cse",
                     std::chrono::duration<double, std::milli>(end - start).count());
             }
 
@@ -12025,6 +12111,40 @@ computeFockOnGPU(const              CMolecule& molecule,
             }
 
             gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto21, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD21_FP32_auto_scalarized<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto21, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD21_FP32_auto_scalarized",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto21_cse, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD21_FP32_auto_scalarized_cse<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto21_cse, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD21_FP32_auto_scalarized_cse",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
                                d_mat_J3_shared21, static_cast<uint32_t>(dd_prim_pair_count_local));
             gpuSafe(gpuStreamSynchronize(stream));
             {
@@ -12041,30 +12161,107 @@ computeFockOnGPU(const              CMolecule& molecule,
                     std::chrono::duration<double, std::milli>(end - start).count());
             }
 
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_old26, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD26_FP32<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_old26, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD26_FP32 baseline",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto26, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD26_FP32_auto_scalarized<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto26, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD26_FP32_auto_scalarized",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
+            gpu::zeroData<<<zero_num_blocks, zero_threads_per_block, 0, stream>>>(
+                               d_mat_J3_auto26_regroup, static_cast<uint32_t>(dd_prim_pair_count_local));
+            gpuSafe(gpuStreamSynchronize(stream));
+            {
+                const auto start = std::chrono::steady_clock::now();
+                gpu::computeCoulombFockDDDD26_FP32_auto_scalarized_regroup<<<dd_dispatch_num_blocks, dd_dispatch_threads_per_block, 0, stream>>>(
+                                   d_mat_J3_auto26_regroup, d_d_prim_info_f, static_cast<uint32_t>(d_prim_count), d_dd_mat_D_f,
+                                   d_dd_first_inds_local, d_dd_second_inds_local, d_dd_pair_data_local_f, static_cast<uint32_t>(dd_prim_pair_count_local),
+                                   d_dd_first_inds, d_dd_second_inds, d_dd_pair_data_f, static_cast<uint32_t>(dd_prim_pair_count),
+                                   d_boys_func_table_f, d_boys_func_ft_f, d_prec_cut_ij_tile, d_screen_cut_ij_tile);
+                gpuSafe(gpuStreamSynchronize(stream));
+                const auto end = std::chrono::steady_clock::now();
+                append_kernel_timing(
+                    "DDDD26_FP32_auto_scalarized_regroup",
+                    std::chrono::duration<double, std::milli>(end - start).count());
+            }
+
             std::vector<double> h_mat_J2_2kernels(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J2_ref(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_sep34(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_merged34(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_scalarized34(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_scalarize_only(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_scalarize_hoist(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_scalarize_rewrite(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_auto34(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_cse(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_old21(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_scalarized21(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto21(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto21_cse(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_shared21(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_old26(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto26(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto26_regroup(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_merged34_mix(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_scalarized34_mix(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_scalarize_only_mix(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_scalarize_hoist_mix(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_scalarize_rewrite_mix(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_auto34_mix(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto34_cse_mix(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_scalarized(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto_cse(dd_prim_pair_count_local, 0.0);
             std::vector<double> h_mat_J3_shared(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto26_mix(dd_prim_pair_count_local, 0.0);
+            std::vector<double> h_mat_J3_auto26_regroup_mix(dd_prim_pair_count_local, 0.0);
 
             gpuSafe(gpuMemcpyAsync(h_mat_J2_2kernels.data(), d_mat_J2_2kernels, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J2_ref.data(), d_mat_J2_ref, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_sep34.data(), d_mat_J3_sep34, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_merged34.data(), d_mat_J3_merged34, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_scalarized34.data(), d_mat_J3_scalarized34, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto34_scalarize_only.data(), d_mat_J3_auto34_scalarize_only, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto34_scalarize_hoist.data(), d_mat_J3_auto34_scalarize_hoist, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto34_scalarize_rewrite.data(), d_mat_J3_auto34_scalarize_rewrite, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_auto34.data(), d_mat_J3_auto34, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto34_cse.data(), d_mat_J3_auto34_cse, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_old21.data(), d_mat_J3_old21, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_scalarized21.data(), d_mat_J3_scalarized21, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto21.data(), d_mat_J3_auto21, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto21_cse.data(), d_mat_J3_auto21_cse, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
             gpuSafe(gpuMemcpyAsync(h_mat_J3_shared21.data(), d_mat_J3_shared21, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_old26.data(), d_mat_J3_old26, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto26.data(), d_mat_J3_auto26, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
+            gpuSafe(gpuMemcpyAsync(h_mat_J3_auto26_regroup.data(), d_mat_J3_auto26_regroup, dd_prim_pair_count_local * sizeof(double), gpuMemcpyDeviceToHost, stream));
 
             gpuSafe(gpuStreamSynchronize(stream));
 
@@ -12072,9 +12269,17 @@ computeFockOnGPU(const              CMolecule& molecule,
             {
                 h_mat_J3_merged34_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_merged34[idx];
                 h_mat_J3_scalarized34_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_scalarized34[idx];
+                h_mat_J3_auto34_scalarize_only_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_auto34_scalarize_only[idx];
+                h_mat_J3_auto34_scalarize_hoist_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_auto34_scalarize_hoist[idx];
+                h_mat_J3_auto34_scalarize_rewrite_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_auto34_scalarize_rewrite[idx];
                 h_mat_J3_auto34_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_auto34[idx];
+                h_mat_J3_auto34_cse_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_sep34[idx] + h_mat_J3_auto34_cse[idx];
                 h_mat_J3_scalarized[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_old21[idx] + h_mat_J3_scalarized21[idx];
+                h_mat_J3_auto[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_old21[idx] + h_mat_J3_auto21[idx];
+                h_mat_J3_auto_cse[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_old21[idx] + h_mat_J3_auto21_cse[idx];
                 h_mat_J3_shared[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_old21[idx] + h_mat_J3_shared21[idx];
+                h_mat_J3_auto26_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_old26[idx] + h_mat_J3_auto26[idx];
+                h_mat_J3_auto26_regroup_mix[idx] = h_mat_J2_2kernels[idx] - h_mat_J3_old26[idx] + h_mat_J3_auto26_regroup[idx];
             }
 
             gpuSafe(gpuFree(d_mat_J2_2kernels));
@@ -12082,10 +12287,19 @@ computeFockOnGPU(const              CMolecule& molecule,
             gpuSafe(gpuFree(d_mat_J3_sep34));
             gpuSafe(gpuFree(d_mat_J3_merged34));
             gpuSafe(gpuFree(d_mat_J3_scalarized34));
+            gpuSafe(gpuFree(d_mat_J3_auto34_scalarize_only));
+            gpuSafe(gpuFree(d_mat_J3_auto34_scalarize_hoist));
+            gpuSafe(gpuFree(d_mat_J3_auto34_scalarize_rewrite));
             gpuSafe(gpuFree(d_mat_J3_auto34));
+            gpuSafe(gpuFree(d_mat_J3_auto34_cse));
             gpuSafe(gpuFree(d_mat_J3_old21));
             gpuSafe(gpuFree(d_mat_J3_scalarized21));
+            gpuSafe(gpuFree(d_mat_J3_auto21));
+            gpuSafe(gpuFree(d_mat_J3_auto21_cse));
             gpuSafe(gpuFree(d_mat_J3_shared21));
+            gpuSafe(gpuFree(d_mat_J3_old26));
+            gpuSafe(gpuFree(d_mat_J3_auto26));
+            gpuSafe(gpuFree(d_mat_J3_auto26_regroup));
             gpuSafe(gpuFree(d_prec_cut_ij_tile));
             gpuSafe(gpuFree(d_screen_cut_ij_tile));
             gpuSafe(gpuFree(d_mat_D2));
@@ -12104,15 +12318,39 @@ computeFockOnGPU(const              CMolecule& molecule,
             check_J_against_ref("DDDD34 FP32_scalarized contribution (scalarized34 vs separate 3+4)", h_mat_J3_scalarized34, h_mat_J3_sep34, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD34 FP32_scalarized mixed result (J34s vs ref)", h_mat_J3_scalarized34_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD34 FP32_scalarized mixed result (J34s vs J2_2kernels)", h_mat_J3_scalarized34_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_only contribution (auto34_s vs separate 3+4)", h_mat_J3_auto34_scalarize_only, h_mat_J3_sep34, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_only mixed result (J34so vs ref)", h_mat_J3_auto34_scalarize_only_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_only mixed result (J34so vs J2_2kernels)", h_mat_J3_auto34_scalarize_only_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_hoist contribution (auto34_h vs separate 3+4)", h_mat_J3_auto34_scalarize_hoist, h_mat_J3_sep34, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_hoist mixed result (J34sh vs ref)", h_mat_J3_auto34_scalarize_hoist_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_hoist mixed result (J34sh vs J2_2kernels)", h_mat_J3_auto34_scalarize_hoist_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_rewrite contribution (auto34_r vs separate 3+4)", h_mat_J3_auto34_scalarize_rewrite, h_mat_J3_sep34, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_rewrite mixed result (J34sr vs ref)", h_mat_J3_auto34_scalarize_rewrite_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarize_rewrite mixed result (J34sr vs J2_2kernels)", h_mat_J3_auto34_scalarize_rewrite_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD34 FP32_auto_scalarized contribution (auto34 vs separate 3+4)", h_mat_J3_auto34, h_mat_J3_sep34, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD34 FP32_auto_scalarized mixed result (J34a vs ref)", h_mat_J3_auto34_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD34 FP32_auto_scalarized mixed result (J34a vs J2_2kernels)", h_mat_J3_auto34_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarized_cse contribution (auto34c vs separate 3+4)", h_mat_J3_auto34_cse, h_mat_J3_sep34, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarized_cse mixed result (J34c vs ref)", h_mat_J3_auto34_cse_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD34 FP32_auto_scalarized_cse mixed result (J34c vs J2_2kernels)", h_mat_J3_auto34_cse_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD21 FP32_scalarized contribution (new21 vs old21)", h_mat_J3_scalarized21, h_mat_J3_old21, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD21 FP32_scalarized mixed result (J3 vs ref)", h_mat_J3_scalarized, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD21 FP32_scalarized mixed result (J3 vs J2_2kernels)", h_mat_J3_scalarized, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD21 FP32_auto_scalarized contribution (auto21 vs old21)", h_mat_J3_auto21, h_mat_J3_old21, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD21 FP32_auto_scalarized mixed result (J3a vs ref)", h_mat_J3_auto, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD21 FP32_auto_scalarized mixed result (J3a vs J2_2kernels)", h_mat_J3_auto, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD21 FP32_auto_scalarized_cse contribution (auto21c vs old21)", h_mat_J3_auto21_cse, h_mat_J3_old21, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD21 FP32_auto_scalarized_cse mixed result (J3c vs ref)", h_mat_J3_auto_cse, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD21 FP32_auto_scalarized_cse mixed result (J3c vs J2_2kernels)", h_mat_J3_auto_cse, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD21 FP32_shared_staged contribution (new21 vs old21)", h_mat_J3_shared21, h_mat_J3_old21, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD21 FP32_shared_staged mixed result (J4 vs ref)", h_mat_J3_shared, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
             check_J_against_ref("DDDD21 FP32_shared_staged mixed result (J4 vs J2_2kernels)", h_mat_J3_shared, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD26 FP32_auto_scalarized contribution (auto26 vs old26)", h_mat_J3_auto26, h_mat_J3_old26, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD26 FP32_auto_scalarized mixed result (J26a vs ref)", h_mat_J3_auto26_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD26 FP32_auto_scalarized mixed result (J26a vs J2_2kernels)", h_mat_J3_auto26_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD26 FP32_auto_scalarized_regroup contribution (auto26r vs old26)", h_mat_J3_auto26_regroup, h_mat_J3_old26, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD26 FP32_auto_scalarized_regroup mixed result (J26r vs ref)", h_mat_J3_auto26_regroup_mix, h_mat_J2_ref, (uint32_t)dd_prim_pair_count_local);
+            check_J_against_ref("DDDD26 FP32_auto_scalarized_regroup mixed result (J26r vs J2_2kernels)", h_mat_J3_auto26_regroup_mix, h_mat_J2_2kernels, (uint32_t)dd_prim_pair_count_local);
             print_cut_status("DDDD", prec_cut_ij_tile_h, screen_cut_ij_tile_h, (uint32_t)dd_prim_pair_count, TILE_DIM_LARGE);
         }
 
