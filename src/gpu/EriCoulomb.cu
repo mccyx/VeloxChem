@@ -57450,6 +57450,28 @@ computeCoulombFockDDDD26_FP32(double*         mat_J,
 
 #include "generated/dddd26_auto_scalarized.inc"
 #include "generated/dddd26_auto_scalarized_regroup.inc"
+#include "generated/dddd_split26_v2_fp64.inc"
+#include "generated/dddd_split26_v2_fp32.inc"
+#include "generated/ddddv2_12_fp32_auto_s.inc"
+#include "generated/ddddv2_16_fp32_auto_s.inc"
+#include "generated/ddddv2_25_fp32_auto_s.inc"
+#include "generated/ddddv2_12_fp32_auto_sr.inc"
+#include "generated/ddddv2_16_fp32_auto_sr.inc"
+#include "generated/ddddv2_25_fp32_auto_sr.inc"
+#include "generated/ddddv2_2_fp32_auto_s.inc"
+#include "generated/ddddv2_20_fp32_auto_s.inc"
+#include "generated/ddddv2_4_fp32_auto_s.inc"
+#include "generated/ddddv2_2_fp32_auto_sr.inc"
+#include "generated/ddddv2_20_fp32_auto_sr.inc"
+#include "generated/ddddv2_4_fp32_auto_sr.inc"
+#include "generated/dddd_v2_fp32_auto_s_ast.inc"
+#include "generated/ddddv2_2_fp64_auto_s_ast_fp64.inc"
+#include "generated/ddddv2_6_fp64_auto_s_ast_fp64.inc"
+#include "generated/ddddv2_12_fp64_auto_s_ast_fp64.inc"
+#include "generated/ddddv2_14_fp64_auto_s_ast_fp64.inc"
+#include "generated/ddddv2_16_fp64_auto_s_ast_fp64.inc"
+#include "generated/pdpd_fp64_auto_s_ast.inc"
+#include "generated/pdpd_fp32_auto_s_ast.inc"
 
 __global__ void __launch_bounds__(TILE_SIZE_J)
 computeCoulombFockDDDD27(double*         mat_J,

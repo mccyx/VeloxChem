@@ -4323,6 +4323,45 @@ computeCoulombFockPDPD_FP32(double*         mat_J,
                        const uint32_t* prec_cut_ij_tile,
                        const uint32_t* screen_cut_ij_tile);
 
+__global__ void __launch_bounds__(TILE_SIZE_J)
+computeCoulombFockPDPD_FP64_auto_s_ast(double*         mat_J,
+                       const double*   p_prim_info,
+                       const uint32_t  p_prim_count,
+                       const double*   d_prim_info,
+                       const uint32_t  d_prim_count,
+                       const double*   pd_mat_D,
+                       const uint32_t* pd_first_inds_local,
+                       const uint32_t* pd_second_inds_local,
+                       const double*   pd_pair_data_local,
+                       const uint32_t  pd_prim_pair_count_local,
+                       const uint32_t* pd_first_inds,
+                       const uint32_t* pd_second_inds,
+                       const double*   pd_pair_data,
+                       const uint32_t  pd_prim_pair_count,
+                       const double*   boys_func_table,
+                       const double*   boys_func_ft,
+                       const uint32_t* prec_cut_ij_tile);
+
+__global__ void __launch_bounds__(TILE_SIZE_J)
+computeCoulombFockPDPD_FP32_auto_s_ast(double*         mat_J,
+                       const float*    p_prim_info_f,
+                       const uint32_t  p_prim_count,
+                       const float*    d_prim_info_f,
+                       const uint32_t  d_prim_count,
+                       const float*    pd_mat_D_f,
+                       const uint32_t* pd_first_inds_local,
+                       const uint32_t* pd_second_inds_local,
+                       const float*    pd_pair_data_local_f,
+                       const uint32_t  pd_prim_pair_count_local,
+                       const uint32_t* pd_first_inds,
+                       const uint32_t* pd_second_inds,
+                       const float*    pd_pair_data_f,
+                       const uint32_t  pd_prim_pair_count,
+                       const float*    boys_func_table_f,
+                       const float*    boys_func_ft_f,
+                       const uint32_t* prec_cut_ij_tile,
+                       const uint32_t* screen_cut_ij_tile);
+
 
 __global__ void __launch_bounds__(TILE_SIZE_J)
 computeCoulombFockPDPP(double*         mat_J,
@@ -5101,6 +5140,15 @@ computeCoulombFockSPDD_FP32(double*         mat_J,
                        const uint32_t* prec_cut_ij_tile,
                        const uint32_t* screen_cut_ij_tile);
 
+#include "generated/dddd_split26_v2_decl.inc"
+#include "generated/dddd_variant_decls_auto_s.inc"
+#include "generated/dddd_variant_decls_auto_sr.inc"
+#include "generated/dddd_v2_fp32_auto_s_ast_decl.inc"
+#include "generated/ddddv2_2_fp64_auto_s_ast_fp64_decl.inc"
+#include "generated/ddddv2_6_fp64_auto_s_ast_fp64_decl.inc"
+#include "generated/ddddv2_12_fp64_auto_s_ast_fp64_decl.inc"
+#include "generated/ddddv2_14_fp64_auto_s_ast_fp64_decl.inc"
+#include "generated/ddddv2_16_fp64_auto_s_ast_fp64_decl.inc"
 
 }  // namespace gpu
 

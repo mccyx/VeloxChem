@@ -6,6 +6,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from clang_ast_dump import run_ast_dump
+from clang_ast_scalar import collect_scalar_targets
 from kernel_ir import (
     build_ir,
     definition_sites,
@@ -20,6 +22,12 @@ from kernel_ir import (
 
 DECL_RE = re.compile(
     r"(?P<indent>[ \t]*)const float (?P<name>[A-Za-z_]\w*)\[3\] = \{"
+    r"(?P<expr0>[^{};]+?),\s*"
+    r"(?P<expr1>[^{};]+?),\s*"
+    r"(?P<expr2>[^{};]+?)\};"
+)
+DECL_DOUBLE_RE = re.compile(
+    r"(?P<indent>[ \t]*)const double (?P<name>[A-Za-z_]\w*)\[3\] = \{"
     r"(?P<expr0>[^{};]+?),\s*"
     r"(?P<expr1>[^{};]+?),\s*"
     r"(?P<expr2>[^{};]+?)\};"
@@ -65,6 +73,10 @@ def scalar_names(array_name: str) -> Tuple[str, str, str]:
     return (f"{stem}0{suffix}", f"{stem}1{suffix}", f"{stem}2{suffix}")
 
 
+def decl_keyword(scalar_type: str) -> str:
+    return f"const {scalar_type}"
+
+
 def selector_expr(base_names: Tuple[str, str, str], index_name: str) -> str:
     return (
         f"({index_name} == 0 ? {base_names[0]} : "
@@ -93,28 +105,45 @@ def shared_variables(function_text):
 
 
 def ancestor_visible_definition(block, name, shared_names):
+    def definition_sites_before(block_node, limit_pos, target_name):
+        sites = []
+        for idx, stmt in enumerate(block_node.statements):
+            if stmt.end > limit_pos:
+                break
+            if target_name in stmt.defs:
+                sites.append((block_node, idx))
+        for child in block_node.children:
+            if child.start >= limit_pos:
+                break
+            child_limit = min(child.end, limit_pos)
+            sites.extend(definition_sites_before(child, child_limit, target_name))
+        return sites
+
     current = block
     while current.parent is not None:
         parent = current.parent
         child_idx = enclosing_child_index(parent, current)
         if child_idx is None:
             break
-        candidate_stmt_idx = None
-        sync_seen = False
         limit_pos = current.start
-        for idx, stmt in enumerate(parent.statements):
+        sync_seen = False
+        for stmt in parent.statements:
             if stmt.end > limit_pos:
                 break
             if "__syncthreads" in stmt.text:
                 sync_seen = True
-            if name in stmt.defs:
-                candidate_stmt_idx = idx
-        if candidate_stmt_idx is not None:
-            if name in shared_names:
-                if sync_seen:
-                    return parent, candidate_stmt_idx, "shared_sync"
-            else:
-                return parent, candidate_stmt_idx, "ancestor"
+
+        candidate_sites = definition_sites_before(parent, limit_pos, name)
+        if candidate_sites:
+            unique_sites = {(site_block.start, site_idx): (site_block, site_idx) for site_block, site_idx in candidate_sites}
+            if len(unique_sites) == 1:
+                if name in shared_names:
+                    if sync_seen:
+                        site_block, site_idx = next(iter(unique_sites.values()))
+                        return site_block, site_idx, "shared_sync"
+                else:
+                    site_block, site_idx = next(iter(unique_sites.values()))
+                    return site_block, site_idx, "ancestor"
         current = parent
     return None
 
@@ -141,7 +170,8 @@ def safe_dynamic_indices(block, start_stmt_idx: int, region: str, array_name: st
                 continue
             def_block, def_idx, reason = ancestor
             alias_map[idx] = hoisted_alias_name(array_name, idx)
-            insert_after_stmt[idx] = (def_block, def_idx)
+            if reason == "shared_sync":
+                insert_after_stmt[idx] = (def_block, def_idx)
             continue
         else:
             def_idx = def_sites[0]
@@ -161,14 +191,14 @@ def safe_dynamic_indices(block, start_stmt_idx: int, region: str, array_name: st
     return alias_map, skipped, insert_after_stmt
 
 
-def find_declaration_statement_index(block, pos, array_name):
+def find_declaration_statement_index(block, pos, array_name, scalar_type="float"):
     stmt_idx = find_statement_index(block, pos)
     if stmt_idx is not None:
         return stmt_idx
     for idx, stmt in enumerate(block.statements):
         if (
-            ("const float %s[3]" % array_name) in stmt.text
-            or ("const float %s0" % array_name[:-2] if array_name.endswith("_f") else "const float %s0" % array_name) in stmt.text
+            (f"{decl_keyword(scalar_type)} {array_name}[3]") in stmt.text
+            or (f"{decl_keyword(scalar_type)} {array_name[:-2]}0" if array_name.endswith("_f") else f"{decl_keyword(scalar_type)} {array_name}0") in stmt.text
         ):
             return idx
     return None
@@ -184,6 +214,24 @@ def line_indent_at(text: str, pos: int) -> str:
     while line_end < len(text) and text[line_end] in " \t":
         line_end += 1
     return text[line_start:line_end]
+
+
+def advance_to_statement_boundary(text: str, pos: int) -> int:
+    if pos < 0:
+        return 0
+    if pos >= len(text):
+        return len(text)
+
+    cursor = pos
+    while cursor < len(text) and text[cursor] not in ";\n":
+        cursor += 1
+    if cursor < len(text) and text[cursor] == ";":
+        cursor += 1
+    while cursor < len(text) and text[cursor] in " \t":
+        cursor += 1
+    if cursor < len(text) and text[cursor] == "\n":
+        cursor += 1
+    return cursor
 
 
 def _normalized_space(text: str) -> str:
@@ -432,19 +480,21 @@ def apply_power_chain_regroup(function_text: str) -> Tuple[str, List[str]]:
     return out, report
 
 
-def apply_scalarize_for_array(function_text: str, match, keep_array_fallback: bool) -> Tuple[str, Dict[str, object]]:
+def apply_scalarize_for_array(
+    function_text: str, match, keep_array_fallback: bool, scalar_type: str = "float"
+) -> Tuple[str, Dict[str, object]]:
     indent = match.group("indent")
     array_name = match.group("name")
     exprs = tuple(match.group(f"expr{i}").strip() for i in range(3))
     scalars = scalar_names(array_name)
     replacement_lines = [
-        f"{indent}const float {scalars[0]} = {exprs[0]};",
-        f"{indent}const float {scalars[1]} = {exprs[1]};",
-        f"{indent}const float {scalars[2]} = {exprs[2]};",
+        f"{indent}{decl_keyword(scalar_type)} {scalars[0]} = {exprs[0]};",
+        f"{indent}{decl_keyword(scalar_type)} {scalars[1]} = {exprs[1]};",
+        f"{indent}{decl_keyword(scalar_type)} {scalars[2]} = {exprs[2]};",
     ]
     if keep_array_fallback:
         replacement_lines.append(
-            f"{indent}const float {array_name}[3] = {{{scalars[0]}, {scalars[1]}, {scalars[2]}}};"
+            f"{indent}{decl_keyword(scalar_type)} {array_name}[3] = {{{scalars[0]}, {scalars[1]}, {scalars[2]}}};"
         )
     out = function_text[: match.start()] + "\n".join(replacement_lines) + function_text[match.end() :]
     info = {
@@ -454,6 +504,47 @@ def apply_scalarize_for_array(function_text: str, match, keep_array_fallback: bo
         "start_search": match.start(),
         "replacement_len": len("\n".join(replacement_lines)),
         "kept_array_fallback": keep_array_fallback,
+        "scalar_type": scalar_type,
+    }
+    return out, info
+
+
+def apply_scalarize_for_decl_info(
+    function_text: str, decl_info: Dict[str, object], keep_array_fallback: bool
+) -> Tuple[str, Dict[str, object]]:
+    indent = decl_info["indent"]
+    array_name = decl_info["array_name"]
+    array_size = decl_info["array_size"]
+    scalar_type = decl_info.get("scalar_type", "float")
+    exprs = tuple(expr.strip() for expr in decl_info["exprs"])
+    if array_size != 3:
+        raise ValueError("AST scalarize currently supports only size-3 arrays")
+
+    scalars = scalar_names(array_name)
+    replacement_lines = [
+        f"{indent}{decl_keyword(scalar_type)} {scalars[0]} = {exprs[0]};",
+        f"{indent}{decl_keyword(scalar_type)} {scalars[1]} = {exprs[1]};",
+        f"{indent}{decl_keyword(scalar_type)} {scalars[2]} = {exprs[2]};",
+    ]
+    if keep_array_fallback:
+        replacement_lines.append(
+            f"{indent}{decl_keyword(scalar_type)} {array_name}[3] = {{{scalars[0]}, {scalars[1]}, {scalars[2]}}};"
+        )
+
+    replacement_text = "\n".join(replacement_lines)
+    out = (
+        function_text[: decl_info["replace_start"]]
+        + replacement_text
+        + function_text[decl_info["replace_end"] :]
+    )
+    info = {
+        "array_name": array_name,
+        "scalars": scalars,
+        "indent": indent,
+        "start_search": decl_info["replace_start"],
+        "replacement_len": len(replacement_text),
+        "kept_array_fallback": keep_array_fallback,
+        "scalar_type": scalar_type,
     }
     return out, info
 
@@ -463,12 +554,13 @@ def apply_indexed_hoist_for_array(function_text: str, info: Dict[str, object]) -
     array_name = info["array_name"]
     scalars = info["scalars"]
     indent = info["indent"]
+    scalar_type = info.get("scalar_type", "float")
     start_search = info["start_search"]
     replacement_len = info["replacement_len"]
 
     function_ir = build_ir(function_text, 0)
     block = innermost_block(function_ir, start_search)
-    stmt_idx = find_declaration_statement_index(block, start_search, array_name)
+    stmt_idx = find_declaration_statement_index(block, start_search, array_name, scalar_type)
     if stmt_idx is None:
         raise ValueError("Could not locate declaration statement in block IR")
 
@@ -478,16 +570,27 @@ def apply_indexed_hoist_for_array(function_text: str, info: Dict[str, object]) -
 
     out = function_text
     if alias_map:
-        absolute_insert_pos = start_search + replacement_len
+        absolute_insert_pos = advance_to_statement_boundary(out, start_search + replacement_len)
         for idx in alias_map:
+            if idx not in insert_after_stmt:
+                continue
             insert_block, insert_stmt_idx = insert_after_stmt[idx]
-            absolute_insert_pos = max(absolute_insert_pos, insert_block.statements[insert_stmt_idx].end)
+            absolute_insert_pos = max(
+                absolute_insert_pos,
+                advance_to_statement_boundary(out, insert_block.statements[insert_stmt_idx].end),
+            )
 
         alias_lines = [
-            f"{indent}const float {alias} = {selector_expr(scalars, idx)};"
+            f"{indent}{decl_keyword(scalar_type)} {alias} = {selector_expr(scalars, idx)};"
             for idx, alias in sorted(alias_map.items())
         ]
-        out = out[:absolute_insert_pos] + "\n" + "\n".join(alias_lines) + out[absolute_insert_pos:]
+        out = (
+            out[:absolute_insert_pos]
+            + "\n"
+            + "\n".join(alias_lines)
+            + "\n"
+            + out[absolute_insert_pos:]
+        )
 
         function_ir = build_ir(out, 0)
         block = innermost_block(function_ir, start_search)
@@ -526,6 +629,45 @@ def apply_direct_index_rewrite_for_array(function_text: str, info: Dict[str, obj
     return out, report
 
 
+def refresh_scalar_info_for_current_text(function_text: str, info: Dict[str, object]) -> Dict[str, object]:
+    refreshed = dict(info)
+    array_decl = f"{decl_keyword(info.get('scalar_type', 'float'))} {info['array_name']}[3]"
+    current_pos = function_text.find(array_decl)
+    if current_pos != -1:
+        refreshed["start_search"] = current_pos
+        refreshed["replacement_len"] = 0
+    return refreshed
+
+
+def remove_unused_fallback_array(function_text: str, info: Dict[str, object]) -> Tuple[str, List[str]]:
+    array_name = info["array_name"]
+    scalar_type = info.get("scalar_type", "float")
+    pattern = re.compile(
+        rf'^[ \t]*{re.escape(decl_keyword(scalar_type))} {re.escape(array_name)}\[3\] = \{{[^\n;]*\}};+[ \t]*\n?',
+        re.MULTILINE,
+    )
+    match = pattern.search(function_text)
+    if not match:
+        return function_text, []
+
+    without_decl = function_text[: match.start()] + function_text[match.end() :]
+    if re.search(rf'\b{re.escape(array_name)}\[', without_decl):
+        return function_text, []
+
+    # Some rewrites can leave behind a now-empty standalone ";" line exactly
+    # where the fallback array used to be. Only trim a semicolon if it starts a
+    # new line at the removal point; do not touch the valid semicolon that ends
+    # the preceding scalar declaration.
+    cleanup_pos = match.start()
+    if cleanup_pos == 0 or without_decl[cleanup_pos - 1] == "\n":
+        tail = without_decl[cleanup_pos:]
+        orphan = re.match(r'[ \t]*;[ \t]*\n', tail)
+        if orphan:
+            without_decl = without_decl[:cleanup_pos] + tail[orphan.end():]
+
+    return without_decl, [f"{array_name}: removed unused fallback array"]
+
+
 def normalize_requested_passes(passes_arg: str) -> List[str]:
     requested = []
     for raw_name in passes_arg.split(","):
@@ -547,30 +689,67 @@ def normalize_requested_passes(passes_arg: str) -> List[str]:
     return [name for name in PUBLIC_PASS_ORDER if name in requested]
 
 
-def run_pass_pipeline(function_text: str, enabled_passes: List[str]) -> Tuple[str, List[str]]:
+def run_pass_pipeline(
+    function_text: str,
+    enabled_passes: List[str],
+    matcher: str,
+    function_name: str,
+    ast_compiler: str,
+    ast_language: str,
+) -> Tuple[str, List[str]]:
     report: List[str] = []
     out = function_text
 
     if "scalar" in enabled_passes:
-        cursor = 0
-        while True:
-            match = DECL_RE.search(out, cursor)
-            if not match:
-                break
+        if matcher == "regex":
+            cursor = 0
+            while True:
+                match = DECL_RE.search(out, cursor)
+                scalar_type = "float"
+                if not match:
+                    match = DECL_DOUBLE_RE.search(out, cursor)
+                    scalar_type = "double"
+                if not match:
+                    break
 
-            keep_array_fallback = False
-            out, info = apply_scalarize_for_array(out, match, keep_array_fallback)
-            report.append(
-                f"{info['array_name']}: scalar pipeline emitted {', '.join(info['scalars'])}"
-            )
+                keep_array_fallback = True
+                out, info = apply_scalarize_for_array(out, match, keep_array_fallback, scalar_type)
+                report.append(
+                    f"{info['array_name']}: scalar pipeline emitted {', '.join(info['scalars'])}"
+                )
 
-            out, pass_report = apply_indexed_hoist_for_array(out, info)
-            report.extend(pass_report)
+                out, pass_report = apply_indexed_hoist_for_array(out, info)
+                report.extend(pass_report)
 
-            out, pass_report = apply_direct_index_rewrite_for_array(out, info)
-            report.extend(pass_report)
+                out, pass_report = apply_direct_index_rewrite_for_array(out, info)
+                report.extend(pass_report)
+                out, pass_report = remove_unused_fallback_array(out, info)
+                report.extend(pass_report)
 
-            cursor = info["start_search"] + info["replacement_len"]
+                cursor = info["start_search"] + info["replacement_len"]
+        elif matcher == "ast":
+            ast_payload, _ = run_ast_dump(ast_compiler, out, function_name, ast_language)
+            targets = collect_scalar_targets(out, ast_payload, function_name, supported_sizes=(3,))
+            infos: List[Dict[str, object]] = []
+
+            for target in reversed(targets):
+                keep_array_fallback = True
+                out, info = apply_scalarize_for_decl_info(out, target, keep_array_fallback)
+                infos.append(info)
+
+            for info in reversed(infos):
+                info = refresh_scalar_info_for_current_text(out, info)
+                report.append(
+                    f"{info['array_name']}: scalar pipeline emitted {', '.join(info['scalars'])} (ast)"
+                )
+                out, pass_report = apply_indexed_hoist_for_array(out, info)
+                report.extend(pass_report)
+                out, pass_report = apply_direct_index_rewrite_for_array(out, info)
+                report.extend(pass_report)
+                out, pass_report = remove_unused_fallback_array(out, info)
+                report.extend(pass_report)
+        else:
+            raise ValueError("Unknown matcher '%s'" % matcher)
 
     if "regroup" in enabled_passes:
         out, pass_report = apply_power_chain_regroup(out)
@@ -604,6 +783,22 @@ def main() -> int:
         action="store_true",
         help="Print a short transformation report to stderr",
     )
+    parser.add_argument(
+        "--matcher",
+        choices=["regex", "ast"],
+        default="regex",
+        help="Matcher backend for scalar pass",
+    )
+    parser.add_argument(
+        "--ast-compiler",
+        default="cc",
+        help="Compiler front-end used for AST JSON dumping when --matcher ast",
+    )
+    parser.add_argument(
+        "--ast-language",
+        default="c++",
+        help="Language passed to the AST compiler when --matcher ast",
+    )
     args = parser.parse_args()
 
     source_path = Path(args.source)
@@ -611,7 +806,14 @@ def main() -> int:
     start, end = find_function_span(text, args.function)
     function_text = text[start:end]
     enabled_passes = normalize_requested_passes(args.passes)
-    transformed, report = run_pass_pipeline(function_text, enabled_passes)
+    transformed, report = run_pass_pipeline(
+        function_text,
+        enabled_passes,
+        args.matcher,
+        args.function,
+        args.ast_compiler,
+        args.ast_language,
+    )
 
     if args.output:
         Path(args.output).write_text(transformed)
