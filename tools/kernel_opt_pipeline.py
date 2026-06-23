@@ -135,13 +135,20 @@ def ancestor_visible_definition(block, name, shared_names):
 
         candidate_sites = definition_sites_before(parent, limit_pos, name)
         if candidate_sites:
-            unique_sites = {(site_block.start, site_idx): (site_block, site_idx) for site_block, site_idx in candidate_sites}
-            if len(unique_sites) == 1:
-                if name in shared_names:
-                    if sync_seen:
-                        site_block, site_idx = next(iter(unique_sites.values()))
-                        return site_block, site_idx, "shared_sync"
-                else:
+            if name in shared_names:
+                candidate_sites = [
+                    (site_block, site_idx)
+                    for site_block, site_idx in candidate_sites
+                    if "__shared__" not in site_block.statements[site_idx].text
+                    and "{" not in site_block.statements[site_idx].text
+                ]
+                unique_sites = {(site_block.start, site_idx): (site_block, site_idx) for site_block, site_idx in candidate_sites}
+                if sync_seen and len(unique_sites) == 1:
+                    site_block, site_idx = next(iter(unique_sites.values()))
+                    return site_block, site_idx, "shared_sync"
+            else:
+                unique_sites = {(site_block.start, site_idx): (site_block, site_idx) for site_block, site_idx in candidate_sites}
+                if len(unique_sites) == 1:
                     site_block, site_idx = next(iter(unique_sites.values()))
                     return site_block, site_idx, "ancestor"
         current = parent

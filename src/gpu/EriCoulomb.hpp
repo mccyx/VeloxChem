@@ -5149,6 +5149,11 @@ computeCoulombFockSPDD_FP32(double*         mat_J,
 #include "generated/ddddv2_12_fp64_auto_s_ast_fp64_decl.inc"
 #include "generated/ddddv2_14_fp64_auto_s_ast_fp64_decl.inc"
 #include "generated/ddddv2_16_fp64_auto_s_ast_fp64_decl.inc"
+#include "generated/coulomb_fp32_auto_s_ast_decl.inc"
+#include "generated/coulomb_resplit_mp_decl.inc"
+#include "generated/coulomb_resplit_mp_auto_s_ast_decl.inc"
+#include "generated/coulomb_alt_split_mp_decl.inc"
+#include "generated/coulomb_alt_split_mp_auto_s_ast_decl.inc"
 
 }  // namespace gpu
 

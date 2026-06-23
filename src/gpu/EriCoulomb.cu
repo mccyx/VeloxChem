@@ -57472,6 +57472,11 @@ computeCoulombFockDDDD26_FP32(double*         mat_J,
 #include "generated/ddddv2_16_fp64_auto_s_ast_fp64.inc"
 #include "generated/pdpd_fp64_auto_s_ast.inc"
 #include "generated/pdpd_fp32_auto_s_ast.inc"
+#include "generated/coulomb_fp32_auto_s_ast.inc"
+#include "generated/coulomb_resplit_mp.inc"
+#include "generated/coulomb_resplit_mp_auto_s_ast.inc"
+#include "generated/coulomb_alt_split_mp.inc"
+#include "generated/coulomb_alt_split_mp_auto_s_ast.inc"
 
 __global__ void __launch_bounds__(TILE_SIZE_J)
 computeCoulombFockDDDD27(double*         mat_J,

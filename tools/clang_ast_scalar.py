@@ -244,6 +244,8 @@ def collect_scalar_targets(function_text: str, ast_payload: dict, function_name:
             line_end = len(function_text)
         line_text = function_text[line_start:line_end]
         indent = line_text[: len(line_text) - len(line_text.lstrip(" \t"))]
+        if replace_start > line_start and function_text[line_start:replace_start].strip() == "":
+            replace_start = line_start
         exprs = [slice_from_node(function_text, expr, function_offset_base).strip() for expr in expr_nodes]
 
         targets.append(
