@@ -83,6 +83,11 @@ aggregate theoretical kernel speedup of `1.6979x`. The theoretical MP time is
 
 `sum(O_i) / (sum(O_i) / 1.6979 + sum(C_i)) = 1.6833x`
 
+For comparison, directly summing FP32 work over all 54 families and dividing
+by all non-screened work gives a true global FP32 work fraction of `82.7852%`.
+This differs from the `82.204%` old-FP64-runtime-weighted fraction used by the
+theoretical aggregate performance model.
+
 ### Same-Layout MP Speedup
 
 A second ratio isolates the mixed-precision benefit within the same selected
@@ -143,8 +148,8 @@ comparison.
 The follow-up `mixed_precision_threshold_k = 1e-5` experiment is reported
 separately in
 [`ALL_WINNERS_THRESHOLD_1E-5.md`](ALL_WINNERS_THRESHOLD_1E-5.md). Its
-old-to-new kernel speedup is `1.8137x`, with a weighted FP32 fraction of
-`89.828%`.
+old-to-new kernel speedup is `1.8137x`, with a true global FP32 work fraction
+of `90.0246%` and an old-FP64-runtime-weighted fraction of `89.828%`.
 
 ## Aggregate Results
 

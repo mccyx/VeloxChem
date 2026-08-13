@@ -54,14 +54,25 @@ The theoretical model assumes FP32 throughput is twice FP64 throughput:
 
 `theoretical speedup = 1 / (f64_weighted + f32_weighted / 2)`
 
-The fractions are weighted by each family's old original FP64 time.
+For the theoretical aggregate performance model, the per-family fractions are
+weighted by each family's old original FP64 time:
+
+`f32_runtime_weighted = sum(O_i * f32_i) / sum(O_i)`
+
+This is different from the true global fraction of all non-screened work:
+
+`f32_global = sum(N_FP32_i) / sum(N_screen_i)`
+
+where `N_screen_i = N_FP64_i + N_FP32_i`. The global fraction weights every
+unit of non-screened work equally, whereas the runtime-weighted fraction gives
+more weight to families that are expensive in the old FP64 implementation.
 
 ## Results
 
-| K threshold | weighted FP32 | theory kernel | old FP64 (ms) | selected FP64 (ms) | selected MP (ms) | cuts (ms) | vs old FP64 | vs selected FP64 | vs old FP64 + cuts | vs selected FP64 + cuts |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `1e-6` | 82.204% | 1.6979x | 4430.465 | 4271.470 | 2606.795 | 22.554 | 1.6996x | 1.6386x | 1.6850x | 1.6245x |
-| `1e-5` | 89.828% | 1.8153x | 4440.181 | 4281.170 | 2448.200 | 23.197 | 1.8137x | 1.7487x | 1.7966x | 1.7323x |
+| K threshold | global FP32 work | old-FP64-runtime-weighted FP32 | theory kernel | old FP64 (ms) | selected FP64 (ms) | selected MP (ms) | cuts (ms) | vs old FP64 | vs selected FP64 | vs old FP64 + cuts | vs selected FP64 + cuts |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `1e-6` | 82.7852% | 82.204% | 1.6979x | 4430.465 | 4271.470 | 2606.795 | 22.554 | 1.6996x | 1.6386x | 1.6850x | 1.6245x |
+| `1e-5` | 90.0246% | 89.828% | 1.8153x | 4440.181 | 4281.170 | 2448.200 | 23.197 | 1.8137x | 1.7487x | 1.7966x | 1.7323x |
 
 `Vs old FP64` is the full old-to-new production speedup. `Vs selected FP64`
 isolates the MP benefit after applying the same selected layouts to FP64 and
@@ -74,7 +85,8 @@ In direct terms for `1e-5`:
 - **`1.7966x`**: old original FP64 versus selected MP plus GPU cut building.
 - **`1.7323x`**: selected-layout FP64 versus selected MP plus GPU cut building.
 
-Raising the threshold from `1e-6` to `1e-5` increases the weighted FP32
+Raising the threshold from `1e-6` to `1e-5` increases the true global FP32 work
+fraction by `7.2394` percentage points and the old-FP64-runtime-weighted
 fraction by `7.624` percentage points. The selected MP kernel time falls by
 `158.595 ms`, and the old-to-new kernel speedup rises from `1.6996x` to
 `1.8137x`.
