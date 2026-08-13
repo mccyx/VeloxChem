@@ -23,22 +23,134 @@ The remaining 50 exchange families retain their old split. Thus,
 MP layouts replaced by their winners. It is not a sum of separate benchmark
 runs.
 
+## Baseline and Speedup Definitions
+
+The performance baseline is always the **old-layout original FP64** kernel,
+including for the four families whose MP layout was resplit. A selected/resplit
+original FP64 variant is measured only to study the effect of layout changes
+and to verify that resplitting preserves the original result. It is not the
+denominator of the final achieved MP speedup.
+
+For family `i`, define:
+
+- `O_i`: old-layout original FP64 kernel time.
+- `M_i`: selected MP kernel time. This is the winner MP time for PDDD, DDDD,
+  DDDP, and DPDD, and the old-layout MP time for every other family.
+- `C_i`: GPU cut-building time.
+- `f32_i` and `f64_i`: fractions of non-screened work assigned to FP32 and
+  FP64, with `f32_i + f64_i = 1`.
+
+The per-family achieved speedups are:
+
+`achieved kernel speedup_i = O_i / M_i`
+
+`achieved speedup with cuts_i = O_i / (M_i + C_i)`
+
+For example, the PDDD result is calculated as:
+
+`306.969 ms old original FP64 / 142.314 ms selected k4_m23 MP = 2.1570x`
+
+The 54-family aggregate speedups are ratios of summed times, not arithmetic
+means of the 54 individual speedups:
+
+`aggregate achieved kernel speedup = sum(O_i) / sum(M_i)`
+
+`aggregate achieved speedup with cuts = sum(O_i) / sum(M_i + C_i)`
+
+Consequently, the host aggregate is:
+
+`4430.465 / 2606.795 = 1.6996x` for kernel only, and
+
+`4430.465 / 2629.349 = 1.6850x` when GPU cut building is included.
+
+The simplified per-family theoretical speedup assumes a 2:1 FP32-to-FP64
+throughput ratio and equal cost per unit of non-screened work:
+
+`theoretical kernel speedup_i = 1 / (f64_i + f32_i / 2)`
+
+For the aggregate theoretical estimate, the fractions are weighted by each
+family's old original FP64 time:
+
+`f32_weighted = sum(O_i * f32_i) / sum(O_i)`
+
+`f64_weighted = sum(O_i * f64_i) / sum(O_i)`
+
+`aggregate theoretical kernel speedup = 1 / (f64_weighted + f32_weighted / 2)`
+
+This gives `f32_weighted = 82.204%`, `f64_weighted = 17.796%`, and an
+aggregate theoretical kernel speedup of `1.6979x`. The theoretical MP time is
+`sum(O_i) / 1.6979`; the theoretical estimate with measured cuts is:
+
+`sum(O_i) / (sum(O_i) / 1.6979 + sum(C_i)) = 1.6833x`
+
+### Same-Layout MP Speedup
+
+A second ratio isolates the mixed-precision benefit within the same selected
+split. For each of the four winner families, let `R_i` be the original FP64
+time of the selected/resplit layout. Its same-layout MP speedup is:
+
+`same-layout MP speedup_i = R_i / M_i`
+
+Unlike the achieved production speedup `O_i / M_i`, this ratio does not use the
+old-layout original FP64 baseline. It should therefore be reported separately
+and should not be used as the final old-to-new performance result.
+
+| family | selected layout | FP32 | selected original FP64 (ms) | selected MP (ms) | theory kernel speedup | same-layout MP speedup |
+|---|---|---:|---:|---:|---:|---:|
+| PDDD | `k4_m23` | 81.053% | 215.731 | 142.314 | 1.6814x | 1.5159x |
+| DDDD | `old_k16_runtime` | 77.438% | 160.357 | 113.276 | 1.6318x | 1.4156x |
+| DDDP | `old_k5` | 79.234% | 132.045 | 87.252 | 1.6561x | 1.5134x |
+| DPDD | `rs_k4` | 80.655% | 112.220 | 72.475 | 1.6758x | 1.5484x |
+
+For these four winners together, times are summed before division:
+
+`sum(R_i) / sum(M_i) = 620.353 / 415.317 = 1.4937x`
+
+For a complete 54-family same-layout comparison, the other 50 families retain
+the old layout, so their selected original FP64 time equals their old original
+FP64 time. Replacing the four old original times by the four selected original
+times gives:
+
+`selected-layout original FP64 aggregate = 4273.055 ms`
+
+`4273.055 / 2606.795 = 1.6392x` for kernel only, and
+
+`4273.055 / 2629.349 = 1.6251x` when GPU cut building is included.
+
+These values answer a different question from the primary `1.6996x` and
+`1.6850x` results: they measure MP against FP64 after applying the same selected
+layouts to both precision modes, whereas the primary results measure the full
+improvement from the old original FP64 implementation to the selected MP
+implementation.
+
+In direct terms:
+
+- **`1.4937x`**: selected original FP64 versus selected MP, summed over only
+  the four winner families.
+- **`1.6392x`**: selected-layout original FP64 versus selected MP for the full
+  54-family workload after selecting the four winners. The other 50 families
+  retain their old layouts in both precision modes.
+- **`1.6996x`**: old-layout original FP64 versus selected MP for the full
+  54-family workload. This is the final old-to-new production kernel speedup.
+
+The corresponding full-workload values with GPU cut building included are
+`1.6251x` for the same-layout comparison and `1.6850x` for the final old-to-new
+comparison.
+
 ## Aggregate Results
 
 ### Host Timer
 
-| metric | average (ms) | speedup vs original FP64 |
+| metric | average (ms) | speedup vs old original FP64 |
 |---|---:|---:|
-| original FP64 kernels | 4430.465 | 1.0000x |
+| old original FP64 kernels | 4430.465 | 1.0000x |
 | old-split MP kernels | 2715.698 | 1.6314x |
 | all-winner MP kernels | 2606.795 | 1.6996x |
 | old-split MP kernels + cut building | 2738.251 | 1.6180x |
 | all-winner MP kernels + cut building | 2629.349 | 1.6850x |
 
-The original-runtime-weighted precision mix is `82.204%` FP32 and `17.796%`
-FP64. Under the 2:1 throughput model, this gives a theoretical aggregate
-kernel speedup of `1.6979x`. Adding the `22.554 ms` measured cut-building time
-to the theoretical MP time gives `1.6833x`.
+The original-runtime-weighted precision mix and its theoretical estimates are
+defined explicitly in the preceding section.
 
 The average GPU cut-building time was `22.554 ms`. The all-winner MP kernel
 standard deviation over the 12 interaction samples was `12.452 ms`.
@@ -51,9 +163,9 @@ remain outside the timer.
 
 ### Nsys Kernel Timing
 
-| metric | Nsys time (ms) | speedup vs original FP64 |
+| metric | Nsys time (ms) | speedup vs old original FP64 |
 |---|---:|---:|
-| original FP64 kernels | 4423.338 | 1.0000x |
+| old original FP64 kernels | 4423.338 | 1.0000x |
 | old-split MP kernels | 2709.919 | 1.6323x |
 | all-winner MP kernels | 2599.218 | 1.7018x |
 
@@ -82,9 +194,10 @@ selected. `Theory kernel` assumes FP32 throughput is twice FP64 throughput:
 The theory therefore models only the precision mix. It does not model changes
 in instruction count, register pressure, occupancy, launch overhead, or load
 balance caused by resplitting. Times and fractions are means over 12 interaction
-samples. `Achieved + cuts` uses `original FP64 / (selected MP + cuts)`.
+samples. All achieved speedups use the old original FP64 time as their
+numerator, as defined above.
 
-| family | layout | FP32 | original FP64 (ms) | selected MP (ms) | cuts (ms) | theory kernel | achieved kernel | achieved + cuts |
+| family | layout | FP32 | old original FP64 (ms) | selected MP (ms) | cuts (ms) | theory kernel | achieved kernel | achieved + cuts |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | DDDD | `old_k16_runtime` | 77.438% | 167.259 | 113.276 | 0.132 | 1.6318x | 1.4766x | 1.4748x |
 | DDDP | `old_k5` | 79.234% | 156.868 | 87.252 | 0.137 | 1.6561x | 1.7979x | 1.7951x |
