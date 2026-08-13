@@ -108,14 +108,17 @@ For these four winners together, times are summed before division:
 
 For a complete 54-family same-layout comparison, the other 50 families retain
 the old layout, so their selected original FP64 time equals their old original
-FP64 time. Replacing the four old original times by the four selected original
-times gives:
+FP64 time. To keep the timing context consistent, the selected-layout FP64
+aggregate is obtained by adding the four same-run layout deltas to the old FP64
+aggregate:
 
-`selected-layout original FP64 aggregate = 4273.055 ms`
+`selected-layout FP64 aggregate = sum(O_i) + sum(R_i - old comparison FP64_i)`
 
-`4273.055 / 2606.795 = 1.6392x` for kernel only, and
+This gives `4271.470 ms`, and therefore:
 
-`4273.055 / 2629.349 = 1.6251x` when GPU cut building is included.
+`4271.470 / 2606.795 = 1.6386x` for kernel only, and
+
+`4271.470 / 2629.349 = 1.6245x` when GPU cut building is included.
 
 These values answer a different question from the primary `1.6996x` and
 `1.6850x` results: they measure MP against FP64 after applying the same selected
@@ -127,15 +130,21 @@ In direct terms:
 
 - **`1.4937x`**: selected original FP64 versus selected MP, summed over only
   the four winner families.
-- **`1.6392x`**: selected-layout original FP64 versus selected MP for the full
+- **`1.6386x`**: selected-layout original FP64 versus selected MP for the full
   54-family workload after selecting the four winners. The other 50 families
   retain their old layouts in both precision modes.
 - **`1.6996x`**: old-layout original FP64 versus selected MP for the full
   54-family workload. This is the final old-to-new production kernel speedup.
 
 The corresponding full-workload values with GPU cut building included are
-`1.6251x` for the same-layout comparison and `1.6850x` for the final old-to-new
+`1.6245x` for the same-layout comparison and `1.6850x` for the final old-to-new
 comparison.
+
+The follow-up `mixed_precision_threshold_k = 1e-5` experiment is reported
+separately in
+[`ALL_WINNERS_THRESHOLD_1E-5.md`](ALL_WINNERS_THRESHOLD_1E-5.md). Its
+old-to-new kernel speedup is `1.8137x`, with a weighted FP32 fraction of
+`89.828%`.
 
 ## Aggregate Results
 
