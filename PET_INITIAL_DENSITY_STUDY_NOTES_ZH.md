@@ -636,24 +636,27 @@ db55bd755a5da702296715e485f3ed1b70bc92cf02ef0a47bb9a1012deca03a8
 
 ## 16. 接下来应该先做什么
 
-笔记和重复 end-to-end timing 现在都已完成。下一阶段是验证并实现 VeloxChem density
-handoff，而不是继续只在 PySCF 中增加 timing 样本。
+笔记、重复 PySCF timing、AO mapping、VeloxChem external-density handoff 和 native
+VeloxChem repeated timing 都已完成。下一阶段是 native RI first-Fock，而不是继续优化
+已经只有约 17--19 ms 的 PET steady forward。
 
 推荐顺序：
 
-1. 检查 VeloxChem 当前 SCF driver 接收 initial density 的内部入口；
-2. 比较 PySCF/VeloxChem overlap matrices、AO ordering、phase 和 spin convention；
-3. 实现或暴露 Python-level `initial_density` API；
-4. 完成当前小分子的 PET density handoff 和能量/cycle correctness test；
-5. 将 density conversion 与模型生命周期封装成可复用接口；
-6. 再做 compile cache、persistent service、batching 等 AI-infra 优化。
+1. profile 当前 PySCF RI-to-DM bridge 并保存中间 reference arrays；
+2. 完成 auxiliary coefficient 到 VeloxChem ordering 的显式 mapping；
+3. 在 VeloxChem grid 上验证 RI `rho` 和 `grad rho`；
+4. 构造 native PBE `Vxc`；
+5. 实现并验证 three-center Coulomb `J`；
+6. 组合 native first Fock、对角化和普通 SCF；
+7. 做大体系 crossover 后，再进入 Tensor Core/mixed-precision 优化。
 
-为什么不立即接 VeloxChem：
+为什么不立即做 Tensor Core：
 
 - 科学有效性已经证明；
 - 稳态端到端收益已经可靠测得，当前小体系约为 9%；
-- PySCF/VeloxChem density convention 和 AO mapping 是独立 correctness 风险；
-- 先有稳定 benchmark，后面接口与优化的收益才可量化。
+- native RI 的 FP64 correctness reference 还不存在；
+- 当前 361 ms bridge 的组件占比尚未 profile；
+- 先证明 coefficient mapping、rho/gradient、J、Vxc 和 first Fock，低精度误差才有参照。
 
 ## 17. 当前阶段结论
 
@@ -669,7 +672,7 @@ PET 不是“用 AI 替代昂贵 ERI kernel”，而是用 AI 提供更接近自
 - 最大 AI-infra 问题是约 7--11 s 的 cold compilation，以及约 2.5--2.7 s 的第二阶段
   warm-up；
 - 重复 timing 已确认 warm PET 在当前小体系上相对 SAD 快约 9%；
-- 接入 VeloxChem 前必须解决 AO mapping 和 restricted-density factor；
+- AO mapping、restricted-density factor 和 external-density API 已解决；
 - 最有希望的实际场景不是单个极小分子的独立计算，而是连续 geometry steps、批量
   molecules 或更大体系。
 
@@ -747,3 +750,133 @@ VeloxChem SCF。
 把 grid/J/Vxc 工作放到 GPU，或者避免 PySCF object/grid 重建，PET 才更可能在小体系上
 达到 break-even。另一个自然方向是测试更大体系，因为此时减少 Fock iterations 的收益
 增长可能快于 bridge overhead。
+
+## 19. First Fock 到底是什么
+
+SCF 不是一开始就知道正确 density。它从初猜 density `D0` 开始，反复执行：
+
+```text
+D0
+ -> 用 D0 构造 Fock/Kohn-Sham matrix F[D0]
+ -> 解 F C = S C epsilon
+ -> 用 occupied orbitals Cocc 组成新 density D1
+ -> mixing/DIIS
+ -> 用 D1 构造 F[D1]
+ -> ...直到 density 和 energy 自洽
+```
+
+这里从初猜第一次构造出的 `F[D0]` 就是 first Fock。对当前 pure PBE restricted DFT：
+
+```text
+F[D0] = Hcore + J[D0] + Vxc[D0]
+```
+
+- `Hcore` 是 kinetic energy 与 nuclear attraction，不依赖 density；
+- `J` 是电子 density 产生的 Coulomb potential；
+- `Vxc` 是 PBE exchange-correlation potential；
+- pure PBE 没有 HF exact-exchange `K`。
+
+“first”只表示 SCF iteration sequence 中的第一次，并不是一种新的 Fock matrix。初猜越
+接近最终自洽 density，first Fock 的 occupied orbitals 就越接近最终 orbitals，后面所需
+iterations 越少。
+
+SAD 路径的 first Fock 使用 `D_SAD`。当前 PET bridge 先在 PySCF 中从 RI density 构造
+一次 Fock 并对角化得到 `D_PET`，然后 VeloxChem 又以 `D_PET` 构造自己的 first Fock。
+这解释了 bridge 为什么看起来重复做了一部分工作。
+
+## 20. Native RI first-Fock 的目标
+
+PET 输出的是 auxiliary-basis RI coefficients：
+
+```text
+rho_RI(r) = sum_P c_P chi_P(r)
+```
+
+native 方案不再先让 PySCF 把它变成 AO density。VeloxChem 直接完成：
+
+```text
+PET coefficients cP
+ -> 在 VeloxChem grid 上计算 rho_RI 和 grad rho_RI
+ -> J_mn = sum_P (mn|P) cP
+ -> 用 LibXC/PBE 构造 Vxc_mn[rho_RI]
+ -> F_RI = Hcore + J_RI + Vxc_RI
+ -> 解 F_RI C = S C epsilon
+ -> Dalpha = Cocc Cocc^T
+ -> 进入普通 VeloxChem SCF
+```
+
+这样数学上的 RI-to-first-Fock 工作仍然存在，但 PySCF bridge、跨程序 AO permutation、
+spin conversion 和第二套 molecule/grid objects 消失。结果从一开始就是 VeloxChem AO
+ordering 和 restricted single-spin convention。
+
+native 实现的两个核心数值问题是：
+
+1. 在 auxiliary basis 上正确计算 `rho` 与 PBE 所需的三个 gradient components；
+2. 计算 mixed-basis three-center Coulomb integrals `(mu nu|P)` 并与 `cP` contraction。
+
+第二点与普通四中心 ERI `(mu nu|lambda sigma)` 有关但不相同，不能未经证明地把现有
+四中心 kernel 当作三中心 kernel 使用。
+
+## 21. 大体系应该怎么测试
+
+第一组使用受控 scaling：复制当前已经验证的 7-atom C2H2O3 fragment，测试
+1/2/4/8 fragments，即 7/14/28/56 atoms 和约 80/160/320/640 orbital AOs。这保持元素、
+局域环境、basis 和模型 domain 不变，适合寻找 crossover，但多个远离 fragments 可能有
+orbital near-degeneracy，因此它是性能实验而不是最终科学案例。
+
+第二组用真实、闭壳层、中性 C/H/N/O 分子，例如 aspirin、caffeine、glucose、guanine
+和 alanine dipeptide。暂缓 phosphate 的原因是 phosphorus 元素 `P` 是否属于 checkpoint
+支持的 atomic species 尚未确认；这里的 `P` 不是 p orbital。所有 def2-SVP 分子当然都
+可能包含 p-type basis functions。
+
+每个体系必须同时记录：
+
+```text
+PET supported/unsupported species
+number of atoms, orbital AOs, auxiliary functions and grid points
+PET cold and steady inference
+RI first-Fock/bridge components
+SAD/PET SCF iterations and exact Fock-build count
+warm and cold end-to-end time
+final energy agreement and convergence failures
+```
+
+## 22. 我们能否继续训练 PET
+
+可以，但当前 ERI benchmark、screening fraction、energy 或普通 HF density 并不是当前
+PET checkpoint 需要的直接标签。模型学习的是匹配方法下的 auxiliary RI coefficients：
+
+```text
+geometry
+ -> converged PBE/def2-SVP density
+ -> def2-universal-jfit overlap-metric RI fit
+ -> metatensor coefficients grouped by angular/parity/species
+```
+
+最低风险的 fine-tuning 是保留 H/C/N/O 元素集合，加入更大有机分子、trajectory、非平衡
+geometry 和真正关心的 workload，以改善 size extrapolation 和 trajectory continuity。
+扩展 phosphorus 等新元素通常还需要新的 element embedding/output blocks，以及覆盖多种
+局域化学环境的数据，不能只用少数 phosphate geometry。
+
+训练评价不能只看 coefficient MSE，还必须看 electron count、density NMAE、first-Fock
+residual、SCF iterations、wall time、最终能量和 failure rate。应先完成 native RI
+first-Fock 和 performance baseline，再生产/微调数据，否则模型收益仍可能被 bridge 吃掉。
+
+## 23. Tensor Core 与低精度路线
+
+第一版 native RI 必须全 FP64，作为不可替代的 correctness reference。之后按风险从低到
+高降低精度：
+
+1. auxiliary AO/derivatives 与 coefficients 的 contraction 用 FP32；
+2. 将 `rho, grad_x, grad_y, grad_z` 或多个 molecules/geometry batching 成 GEMM，使
+   Tensor Core 而不是低利用率 GEMV 工作；
+3. PBE `Vxc` matrix accumulation 中的 `A^T W A` 使用 TF32/BF16 input 与 FP32
+   accumulation，最终以 FP64 matrix/reduction 收口；
+4. three-center `J` contraction 按 integral/coefficient bound 分层使用 FP64、FP32、
+   TF32/BF16，并保留误差估计和 fallback；
+5. generalized eigensolver 最后再尝试低精度，并用 FP64 residual 和 iterative refinement
+   守护 occupation、orthogonality 与小 gap 情况。
+
+每次降低精度都必须比较 `rho/grad-rho`、electron count、`J`、`Vxc`、`F`、eigensolver
+residual、initial density、SCF iterations、最终 energy 和 end-to-end time。Tensor Core
+kernel 变快但导致多一次 SCF iteration，很可能就是端到端退化。

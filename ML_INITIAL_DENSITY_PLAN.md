@@ -13,6 +13,13 @@ Development branch:
 ml-initial-density-pet
 ```
 
+Current status (2026-08-28): milestones 1--3 and the first small-system part of
+milestone 4 are complete. The pretrained model is reproduced, PySCF-to-
+VeloxChem AO/spin conversion is overlap-validated, an external restricted
+density API is implemented, and native VeloxChem SAD/PET/reference-RI results
+agree in energy. The current bottleneck is the external PySCF RI-to-DM bridge.
+The actionable next-stage plan is in `NATIVE_RI_FIRST_FOCK_PLAN.md`.
+
 ## Initial scope
 
 Supported first:
@@ -288,4 +295,3 @@ The first stage succeeds only if:
 4. fallback is safe and existing workflows are unchanged;
 5. end-to-end time improves after all AI/conversion overhead is included;
 6. the environment and benchmark reproduce on Dardel GH nodes.
-
