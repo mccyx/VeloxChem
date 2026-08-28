@@ -42,9 +42,38 @@ After this reproduction passes, add a separate CUDA environment for the GH200
 node and benchmark only model graph construction and inference there. Do not
 mix the AI environment into the VeloxChem build environment.
 
+The GH200 environment is created from `logingh` so its compiled packages use
+the correct aarch64 architecture:
+
+```bash
+ssh logingh
+cd /cfs/klemming/home/y/yuch4126/work/VeloxChem.ml-initial-density-pet
+tools/ml_initial_density/bootstrap_gh200_env.sh
+```
+
+It pins the official aarch64 CUDA 13.0 build of PyTorch 2.10.0, which satisfies
+the PyTorch and metatomic version ranges of `metatrain==2026.2`. CUDA execution
+has been verified on the compute-capability 12.1 GPU exposed by `logingh`. A
+formal one-inference GH200 smoke job uses the PDC test GH account:
+
+```bash
+sbatch tools/ml_initial_density/submit_pet_gh200_smoke.sbatch
+```
+
+The end-to-end PySCF reproduction can then run on one GH compute node:
+
+```bash
+sbatch tools/ml_initial_density/submit_reproduce_pet_gh200.sbatch
+```
+
 ## Current status
 
 - Official recipe and checkpoint downloaded and checksummed in scratch.
 - CPU reproduction code and isolated-environment bootstrap are ready.
-- The first Slurm submission on 2026-08-28 could not reach the Slurm
-  controller; resubmit the same job once the controller is available.
+- GH environment uses PyTorch 2.10.0+cu130 on aarch64.
+- Compute-node smoke job 24001957 completed successfully on an NVIDIA GH200
+  120GB: 13 output blocks and 267 RI coefficients; initial model/calculator
+  load took 2.07 s and the first CUDA forward took 8.22 s.
+- The `sum28-gpugh` reservation expired at 12:00 on 2026-08-28; subsequent
+  scripts use the normal `gpugh` queue with account `pdc-software-test-gh`.
+- Full SAD/reference-RI/PET PySCF reproduction is the next run.
