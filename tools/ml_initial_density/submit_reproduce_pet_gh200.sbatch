@@ -21,6 +21,7 @@ export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
 export OPENBLAS_NUM_THREADS="$SLURM_CPUS_PER_TASK"
 
 source "$scratch_root/env/pet-density-gh200-py311/bin/activate"
+export LD_LIBRARY_PATH="$scratch_root/env/pet-density-gh200-py311/lib/python3.11/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH:-}"
 srun python "$repo_root/tools/ml_initial_density/reproduce_pet_pyscf.py" \
     --device cuda \
     --threads "$SLURM_CPUS_PER_TASK" \

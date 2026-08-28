@@ -19,6 +19,7 @@ export VLX_ML_DENSITY_SCRATCH="$scratch_root"
 export CUDA_VISIBLE_DEVICES=0
 
 source "$scratch_root/env/pet-density-gh200-py311/bin/activate"
+export LD_LIBRARY_PATH="$scratch_root/env/pet-density-gh200-py311/lib/python3.11/site-packages/nvidia/cu13/lib:${LD_LIBRARY_PATH:-}"
 srun python "$repo_root/tools/ml_initial_density/smoke_pet_inference.py" \
     --device cuda \
     --model "$scratch_root/checkpoints/pet-density.pt" \

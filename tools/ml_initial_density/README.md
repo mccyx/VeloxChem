@@ -88,3 +88,6 @@ sbatch tools/ml_initial_density/submit_pet_gh200_inference_benchmark.sbatch
   0.44 s, and PET-started SCF 8.25 s, versus 1.98 s for SAD guess plus SCF.
 - The next benchmark measures warm steady-state model inference separately from
   CUDA/JIT cold-start cost.
+- Repeated inference additionally requires the CUDA 13 wheel's `nvidia/cu13/lib`
+  directory in `LD_LIBRARY_PATH`, because the second forward triggers NVRTC
+  fusion and dynamically loads `libnvrtc-builtins.so.13.0`.
