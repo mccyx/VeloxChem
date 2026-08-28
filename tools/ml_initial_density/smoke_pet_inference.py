@@ -4,6 +4,7 @@
 import argparse
 import json
 from pathlib import Path
+import statistics
 import time
 
 import torch
@@ -21,6 +22,8 @@ def main():
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--warmup", type=int, default=0)
+    parser.add_argument("--repeats", type=int, default=0)
     args = parser.parse_args()
 
     atoms = Atoms(
@@ -53,6 +56,19 @@ def main():
         torch.cuda.synchronize()
     forward_s = time.perf_counter() - start
 
+    for _ in range(args.warmup):
+        calculator.run_model(atoms, {target_name: ModelOutput(per_atom=True)})
+    if args.device.startswith("cuda"):
+        torch.cuda.synchronize()
+
+    steady_times = []
+    for _ in range(args.repeats):
+        start = time.perf_counter()
+        calculator.run_model(atoms, {target_name: ModelOutput(per_atom=True)})
+        if args.device.startswith("cuda"):
+            torch.cuda.synchronize()
+        steady_times.append(time.perf_counter() - start)
+
     blocks = list(coefficients.blocks())
     result = {
         "device_requested": args.device,
@@ -65,6 +81,19 @@ def main():
         "output_values": sum(block.values.numel() for block in blocks),
         "model_and_calculator_load_s": load_s,
         "first_forward_s": forward_s,
+        "warmup_forwards": args.warmup,
+        "steady_forward_s": (
+            {
+                "repeats": len(steady_times),
+                "mean": statistics.fmean(steady_times),
+                "median": statistics.median(steady_times),
+                "min": min(steady_times),
+                "max": max(steady_times),
+                "all": steady_times,
+            }
+            if steady_times
+            else None
+        ),
     }
     print(json.dumps(result, indent=2))
 

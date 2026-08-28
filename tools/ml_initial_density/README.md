@@ -66,6 +66,12 @@ The end-to-end PySCF reproduction can then run on one GH compute node:
 sbatch tools/ml_initial_density/submit_reproduce_pet_gh200.sbatch
 ```
 
+Measure cold-start and steady-state inference separately with:
+
+```bash
+sbatch tools/ml_initial_density/submit_pet_gh200_inference_benchmark.sbatch
+```
+
 ## Current status
 
 - Official recipe and checkpoint downloaded and checksummed in scratch.
@@ -76,4 +82,9 @@ sbatch tools/ml_initial_density/submit_reproduce_pet_gh200.sbatch
   load took 2.07 s and the first CUDA forward took 8.22 s.
 - The `sum28-gpugh` reservation expired at 12:00 on 2026-08-28; subsequent
   scripts use the normal `gpugh` queue with account `pdc-software-test-gh`.
-- Full SAD/reference-RI/PET PySCF reproduction is the next run.
+- Full reproduction job 24007798 passed: SAD/reference-RI/PET required 12/8/9
+  SCF cycles and converged energies agreed within 2e-11 Hartree. This cold run
+  was not an end-to-end speedup: PET forward took 7.80 s, PET-to-DM conversion
+  0.44 s, and PET-started SCF 8.25 s, versus 1.98 s for SAD guess plus SCF.
+- The next benchmark measures warm steady-state model inference separately from
+  CUDA/JIT cold-start cost.
