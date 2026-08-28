@@ -91,3 +91,8 @@ sbatch tools/ml_initial_density/submit_pet_gh200_inference_benchmark.sbatch
 - Repeated inference additionally requires the CUDA 13 wheel's `nvidia/cu13/lib`
   directory in `LD_LIBRARY_PATH`, because the second forward triggers NVRTC
   fusion and dynamically loads `libnvrtc-builtins.so.13.0`.
+- Inference benchmark job 24007953 passed. Model/calculator loading took 1.52 s
+  and the first CUDA forward took 10.94 s, but 20 post-warm-up forwards had a
+  15.73 ms median (16.94 ms mean, 15.24--21.71 ms range). Optimization should
+  therefore target cold-start compilation/caching and persistent-model reuse
+  before attempting to accelerate steady-state kernels.
