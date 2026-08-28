@@ -430,17 +430,36 @@ cold forward 比 steady median 慢约 695 倍。
 - AI-infra 的第一目标应是 model persistence、kernel cache、AOT/prewarm、batching；
 - 在此之前优化 16 ms steady kernels 的收益有限。
 
-用当前不稳定但有启发性的数字估算：如果 steady PET-started SCF 约 1.2 s，
-RI-to-DM 约 0.44 s，则：
+随后 jobs `24008018` 和 `24008057` 用固定 density、轮换 SCF 执行顺序和 5 次重复，
+验证了稳态端到端时间。中位数如下：
 
 ```text
-steady PET step ~= 0.016 + 0.44 + 1.2 = 1.66 s
-SAD step        ~= 0.277 + 1.70       = 1.98 s
+                         8 threads                 1 thread
+SAD guess                0.048 s                   0.018 s
+SAD-started SCF          2.929 s / 12 cycles       4.821 s / 12 cycles
+RI -> DM                 0.352 s                   0.579 s
+RI-started SCF           2.110 s / 8 cycles        3.490 s / 8 cycles
+PET steady forward       0.017 s                   0.019 s
+PET -> DM                0.361 s                   0.585 s
+PET-started SCF          2.321 s / 9 cycles        3.813 s / 9 cycles
 ```
 
-steady trajectory step 可能有约 16% 收益，但首次约 12 s 的 model load/JIT 需要几十个
-geometry steps 才能摊销。更大分子的单次 Fock build 更贵，break-even 可能更早。
-这些仍是假设，必须用重复 end-to-end benchmark 验证。
+因此，不含一次性 model load/compile 的 warm end-to-end 中位数为：
+
+```text
+8 threads: SAD 2.977 s, PET 2.700 s，PET 快约 9.3%
+1 thread:  SAD 4.839 s, PET 4.417 s，PET 快约 8.7%
+```
+
+原先单次测到的 PET-started SCF `8.249 s` 没有复现；它是初始化、线程或运行顺序造成
+的异常值，不能代表 PET density 的 SCF 性能。两种线程设置都稳定复现 12/8/9 cycles，
+说明 PET 的小幅稳态收益来自减少三个 SCF iterations，而不是偶然的 cache 效应。
+
+还有一个重要细节：第一次 forward 为 7.4--8.9 s，紧接着第二次仍为 2.5--2.7 s，
+第三次起才稳定为 17--19 ms。这表明 CUDA/TorchScript/NVRTC 存在多阶段 lazy
+initialization/compilation；可靠 benchmark 至少需要两次不计时的 warm-up。按 8-thread
+结果粗略估算，相对每步约 0.277 s 的稳态收益，单次约 10 s 的加载和两阶段预热需要约
+36 个同类 geometry steps 才能摊销。这个 break-even 只适用于当前 7-atom 测试分子。
 
 ## 13. Dardel 环境与遇到的问题
 
@@ -577,6 +596,8 @@ account:   pdc-software-test
 24007798  完整科学复现成功并保存 JSON/NPZ
 24007909  第二次 forward 缺少 NVRTC builtins path
 24007953  cold + warm 20-repeat inference benchmark 成功
+24008018  8-thread、5-repeat 交错 end-to-end benchmark 成功
+24008057  1-thread、5-repeat 对照 benchmark 成功
 ```
 
 ## 15. 当前代码和数据
@@ -591,11 +612,13 @@ tools/ml_initial_density/
 ├── requirements-reproduce.txt
 ├── requirements-gh200.txt
 ├── reproduce_pet_pyscf.py
+├── benchmark_initial_density_end_to_end.py
 ├── smoke_pet_inference.py
 ├── submit_reproduce_pet_cpu.sbatch
 ├── submit_pet_gh200_smoke.sbatch
 ├── submit_reproduce_pet_gh200.sbatch
-└── submit_pet_gh200_inference_benchmark.sbatch
+├── submit_pet_gh200_inference_benchmark.sbatch
+└── submit_pet_repeated_timing_gh200.sbatch
 ```
 
 Artifact hashes：
@@ -613,26 +636,22 @@ db55bd755a5da702296715e485f3ed1b70bc92cf02ef0a47bb9a1012deca03a8
 
 ## 16. 接下来应该先做什么
 
-现在先完成这份笔记是正确顺序。笔记完成后，下一实验应当是重复 end-to-end timing，
-而不是立刻修改 VeloxChem。
+笔记和重复 end-to-end timing 现在都已完成。下一阶段是验证并实现 VeloxChem density
+handoff，而不是继续只在 PySCF 中增加 timing 样本。
 
 推荐顺序：
 
-1. 在同一个 process 中预先加载并 warm PET；
-2. 分别重复 PET forward、RI-to-DM、SAD generation；
-3. 对同一个固定 `D_SAD`、`D_RI`、`D_PET` 多次运行 SCF；
-4. 交错或随机执行 SAD/RI/PET 顺序，避免 cache/order bias；
-5. 使用合理 CPU thread 数（例如 1、8，而不是只用 72）并记录 median；
-6. 得到可靠的 steady PET end-to-end cost 与 break-even trajectory length；
-7. 然后实现 VeloxChem 的 Python-level `initial_density` API；
-8. 比较 PySCF/VeloxChem overlap matrices、AO ordering、phase 和 spin convention；
-9. 完成小分子 PET density handoff；
-10. 最后才做 `torch.compile`、AOT/cache、CUDA Graph、batching 等 AI-infra 优化。
+1. 检查 VeloxChem 当前 SCF driver 接收 initial density 的内部入口；
+2. 比较 PySCF/VeloxChem overlap matrices、AO ordering、phase 和 spin convention；
+3. 实现或暴露 Python-level `initial_density` API；
+4. 完成当前小分子的 PET density handoff 和能量/cycle correctness test；
+5. 将 density conversion 与模型生命周期封装成可复用接口；
+6. 再做 compile cache、persistent service、batching 等 AI-infra 优化。
 
 为什么不立即接 VeloxChem：
 
 - 科学有效性已经证明；
-- 但稳态端到端收益还没有可靠 measurement；
+- 稳态端到端收益已经可靠测得，当前小体系约为 9%；
 - PySCF/VeloxChem density convention 和 AO mapping 是独立 correctness 风险；
 - 先有稳定 benchmark，后面接口与优化的收益才可量化。
 
@@ -646,9 +665,10 @@ PET 不是“用 AI 替代昂贵 ERI kernel”，而是用 AI 提供更接近自
 - pretrained PET 可以直接使用，不需要自己训练；
 - 在匹配的 PBE/def2-SVP domain 中，PET 将 SCF cycles 从 12 降到 9；
 - 最终能量与 SAD/reference RI 一致；
-- 模型稳态 forward 只有约 16 ms；
-- 最大 AI-infra 问题是约 11 s 的 cold compilation；
-- RI-to-DM 和 SCF timing 仍需重复测量；
+- 模型稳态 forward 约 16--19 ms；
+- 最大 AI-infra 问题是约 7--11 s 的 cold compilation，以及约 2.5--2.7 s 的第二阶段
+  warm-up；
+- 重复 timing 已确认 warm PET 在当前小体系上相对 SAD 快约 9%；
 - 接入 VeloxChem 前必须解决 AO mapping 和 restricted-density factor；
 - 最有希望的实际场景不是单个极小分子的独立计算，而是连续 geometry steps、批量
   molecules 或更大体系。

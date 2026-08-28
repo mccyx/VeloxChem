@@ -72,6 +72,17 @@ Measure cold-start and steady-state inference separately with:
 sbatch tools/ml_initial_density/submit_pet_gh200_inference_benchmark.sbatch
 ```
 
+Repeat density construction and interleave SAD/reference-RI/PET-started SCF
+timings with:
+
+```bash
+sbatch tools/ml_initial_density/submit_pet_repeated_timing_gh200.sbatch
+```
+
+The default is five repeats using eight CPU threads. The SCF execution order is
+rotated each repeat to reduce cache and order bias. Override the repetition
+count at submission time with, for example, `--export=ALL,BENCH_REPEATS=8`.
+
 ## Current status
 
 - Official recipe and checkpoint downloaded and checksummed in scratch.
@@ -96,3 +107,10 @@ sbatch tools/ml_initial_density/submit_pet_gh200_inference_benchmark.sbatch
   15.73 ms median (16.94 ms mean, 15.24--21.71 ms range). Optimization should
   therefore target cold-start compilation/caching and persistent-model reuse
   before attempting to accelerate steady-state kernels.
+- Repeated end-to-end jobs 24008018 (8 threads) and 24008057 (1 thread)
+  eliminated the anomalous one-shot 8.25 s PET-started SCF result. Five
+  interleaved repeats gave stable SAD/RI/PET cycle counts of 12/8/9. At eight
+  threads the warm median totals were 2.977 s for SAD and 2.700 s for PET
+  (about 9.3% faster); at one thread they were 4.839 s and 4.417 s (about 8.7%
+  faster). A second forward still took 2.5--2.7 s after the 7.4--8.9 s cold
+  forward, so robust timing requires two untimed warm-up calls.
