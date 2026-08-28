@@ -1,5 +1,6 @@
 ase>=3.23
 metatrain==2026.2
 numpy
+py3Dmol
 pyscf>=2.6,<3.0
 scipy
