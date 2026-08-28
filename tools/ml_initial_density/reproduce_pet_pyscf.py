@@ -172,8 +172,16 @@ def main() -> None:
         raise RuntimeError("at least one SCF calculation did not converge")
     if max(energies.values()) - min(energies.values()) > 1.0e-8:
         raise RuntimeError(f"converged energies disagree: {energies}")
+    electron_count_tolerances = {
+        # PySCF's projected SAD guess is not exactly electron conserving; the
+        # upstream recipe reports about 37.963 electrons for this 38-electron
+        # molecule. The orbital densities derived from RI/PET must be exact.
+        "sad": 1.0e-1,
+        "ri_reference": 1.0e-8,
+        "pet": 1.0e-8,
+    }
     for name, count in electron_counts.items():
-        if abs(count - molecule.nelectron) > 1.0e-8:
+        if abs(count - molecule.nelectron) > electron_count_tolerances[name]:
             raise RuntimeError(f"{name} density has {count} electrons")
 
     metadata = {
@@ -190,6 +198,7 @@ def main() -> None:
         "xc": xc,
         "auxbasis": auxbasis,
         "electron_counts": electron_counts,
+        "electron_count_tolerances": electron_count_tolerances,
         "scf_cycles": cycles,
         "converged_energies_hartree": energies,
         "timings": timings,
