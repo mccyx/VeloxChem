@@ -672,3 +672,78 @@ PET 不是“用 AI 替代昂贵 ERI kernel”，而是用 AI 提供更接近自
 - 接入 VeloxChem 前必须解决 AO mapping 和 restricted-density factor；
 - 最有希望的实际场景不是单个极小分子的独立计算，而是连续 geometry steps、批量
   molecules 或更大体系。
+
+## 18. VeloxChem density handoff 验证
+
+在当前分支完成 release build 后，两套程序对相同几何和 def2-SVP 得到的 AO 数都是
+80。源码和 overlap matrix 共同确认：
+
+- PySCF 按 atom/shell/component 排列 AO；
+- VeloxChem 按 angular momentum/component/atom/radial shell 排列；
+- VeloxChem p 分量顺序为 `(py, pz, px)`；
+- d 分量顺序为 `(dxy, dyz, dz2, dxz, dx2-y2)`，与 PySCF 标签顺序一致；
+- 此体系不需要额外 phase sign correction。
+
+完整 permutation 作用后：
+
+```text
+max |S_VLX - P S_PySCF P^T| = 3.476e-11
+RMS overlap difference       = 5.043e-12
+```
+
+VeloxChem restricted density 存单自旋块，而 PySCF RKS density 是 spin-summed，因此：
+
+```text
+D_VLX = 0.5 * P D_PySCF P^T
+```
+
+变换后的电子数为：
+
+```text
+PET          Tr(D_VLX S_VLX) = 18.999999999921
+reference RI                 = 18.999999999921
+PySCF SAD                    = 18.981484264437
+```
+
+`ScfDriver.compute()` 已增加 `initial_density` 参数，当前刻意只支持 restricted DIIS，
+并验证矩阵 shape、finite values、symmetry 和 contiguous layout。首次 native VeloxChem
+PBE/def2-SVP correctness run 得到：
+
+```text
+SAD            15 iterations   -302.53142842941986 Eh
+PET            13 iterations   -302.53142842942225 Eh
+reference RI   11 iterations   -302.53142842940260 Eh
+energy spread                   1.97e-11 Eh
+```
+
+这证明 PET density 已经真正进入 VeloxChem SCF，并减少 2 次 iterations。该轮 SAD/PET/RI
+按固定顺序运行，时间分别为 4.37/0.73/0.63 s；SAD 包含进程首次 GPU、grid 和 library
+初始化，因此这些时间不能用于声称 speedup。下一实验应在同一进程交错重复三种固定
+density 的 VeloxChem SCF timing。
+
+交错重复实验随后完成。每种初猜先 warm 一次，再轮换执行 5 次，结果为：
+
+```text
+SAD            median 0.8272 s   15 iterations
+PET            median 0.7089 s   13 iterations
+reference RI   median 0.6199 s   11 iterations
+```
+
+5 次 iteration 数和能量逐次完全稳定。只计算 native VeloxChem SCF 部分，PET 相对 SAD
+快约 14.3%。但 PET density 不是免费得到的。使用当前已测的 steady PET forward 和
+PySCF RI-to-DM bridge：
+
+```text
+current PET end-to-end ~= 0.017 + 0.361 + 0.709 = 1.087 s
+native VeloxChem SAD   ~= 0.827 s
+```
+
+因此当前 7-atom 小体系中，warm PET end-to-end 仍比 VeloxChem SAD 慢约 31%，更不用说
+cold compilation。PySCF 中观察到的约 9% warm speedup 不能直接外推到更快的 GPU
+VeloxChem SCF。
+
+这个结果重新定义了 AI-infra 优化目标：17 ms 模型 forward 已不是主要问题，约 361 ms
+的 RI-to-DM bridge 才是。如果能在 VeloxChem 内直接用 RI density 构造一次 Fock/DM、
+把 grid/J/Vxc 工作放到 GPU，或者避免 PySCF object/grid 重建，PET 才更可能在小体系上
+达到 break-even。另一个自然方向是测试更大体系，因为此时减少 Fock iterations 的收益
+增长可能快于 bridge overhead。

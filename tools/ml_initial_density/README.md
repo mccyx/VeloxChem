@@ -83,6 +83,18 @@ The default is five repeats using eight CPU threads. The SCF execution order is
 rotated each repeat to reduce cache and order bias. Override the repetition
 count at submission time with, for example, `--export=ALL,BENCH_REPEATS=8`.
 
+The AO handoff utilities are:
+
+```text
+probe_ao_conventions.py              export/compare PySCF and VeloxChem overlap
+transform_density_for_veloxchem.py   permute and convert RKS density to one spin
+reproduce_pet_veloxchem.py           run VeloxChem SAD/PET/reference-RI SCF
+```
+
+`ScfDriver.compute(..., initial_density=D)` now accepts a symmetric restricted
+single-spin AO density in VeloxChem ordering when using DIIS. A spin-summed
+PySCF RKS density must first be permuted and multiplied by 0.5.
+
 ## Current status
 
 - Official recipe and checkpoint downloaded and checksummed in scratch.
@@ -114,3 +126,17 @@ count at submission time with, for example, `--export=ALL,BENCH_REPEATS=8`.
   (about 9.3% faster); at one thread they were 4.839 s and 4.417 s (about 8.7%
   faster). A second forward still took 2.5--2.7 s after the 7.4--8.9 s cold
   forward, so robust timing requires two untimed warm-up calls.
+- PySCF-to-VeloxChem AO mapping was validated using the full def2-SVP overlap
+  matrix: the maximum absolute difference after permutation was 3.48e-11. The
+  transformed PET restricted density had 18.999999999921 alpha electrons.
+- The first native VeloxChem handoff passed on nid002897. SAD/PET/reference-RI
+  required 15/13/11 iterations and converged energies agreed within 1.97e-11
+  Hartree. The 4.37/0.73/0.63 s one-shot timings include execution-order and
+  cold-start effects and are not yet a performance comparison.
+- Five warm, order-rotated native VeloxChem repeats gave median SAD/PET/RI
+  timings of 0.8272/0.7089/0.6199 s with stable 15/13/11 iterations. PET thus
+  reduced the native SCF part by about 14.3%. Adding the separately measured
+  0.017 s steady model forward and current 0.361 s PySCF RI-to-DM bridge gives
+  about 1.087 s, however, so PET is still about 31% slower end-to-end than
+  native SAD for this seven-atom system. The bridge, not steady model
+  inference, is now the primary optimization target.

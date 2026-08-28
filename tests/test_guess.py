@@ -8,6 +8,27 @@ from veloxchem.scfrestdriver import ScfRestrictedDriver
 
 class TestInitialGuess:
 
+    def test_external_restricted_density_validation(self):
+
+        molstr = """
+        O   0.0   0.0   0.0
+        H   0.0   1.4   1.1
+        H   0.0  -1.4   1.1
+        """
+        mol = Molecule.read_molecule_string(molstr, 'au')
+        bas = MolecularBasis.read(mol, 'def2-svp', ostream=None)
+        scf_drv = ScfRestrictedDriver()
+
+        nao = bas.get_dimensions_of_basis()
+        density = np.eye(nao) * 0.25
+        validated = scf_drv._validate_external_initial_density(density, bas)
+
+        assert len(validated) == 1
+        assert validated[0].shape == (nao, nao)
+        assert validated[0].dtype == np.float64
+        assert validated[0].flags.c_contiguous
+        assert np.array_equal(validated[0], density)
+
     def test_sad_guess(self):
 
         molstr = """

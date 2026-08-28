@@ -541,7 +541,7 @@ class ScfDriver:
             self._point_charges = self.comm.bcast(self._point_charges,
                                                   root=mpi_master())
 
-    def compute(self, molecule, ao_basis, min_basis=None):
+    def compute(self, molecule, ao_basis, min_basis=None, initial_density=None):
         """
         Performs SCF calculation using molecular data.
 
@@ -551,6 +551,10 @@ class ScfDriver:
             The AO basis set.
         :param min_basis:
             The minimal AO basis set.
+        :param initial_density:
+            Optional restricted, single-spin AO density matrix in VeloxChem AO
+            ordering. When provided, it replaces the SAD/restart guess and is
+            currently supported with DIIS acceleration only.
         """
 
         profiler = Profiler()
@@ -696,7 +700,15 @@ class ScfDriver:
             # and we want to run this on all ranks such that they get
             # the first exposure to cublas/hipblas kernel, which makes
             # later measurement of FockERI more accurate
-            if self.restart:
+            if initial_density is not None:
+                if self.rank == mpi_master():
+                    den_mat = self._validate_external_initial_density(
+                        initial_density, ao_basis)
+                    naos = den_mat[0].shape[0]
+                else:
+                    den_mat = None
+                    naos = None
+            elif self.restart:
                 den_mat = self.gen_initial_density_restart(molecule)
                 naos = den_mat[0].shape[0]
             else:
@@ -719,6 +731,11 @@ class ScfDriver:
 
         # two level DIIS method
         elif self.acc_type.upper() == 'L2_DIIS':
+
+            assert_msg_critical(
+                initial_density is None,
+                'ScfDriver.compute: External initial density is currently ' +
+                'supported with DIIS acceleration only')
 
             # first step
             self._first_step = True
@@ -865,6 +882,30 @@ class ScfDriver:
         self.comm.Allreduce(S22_partial, S22, op=MPI.SUM)
 
         return S12, S22
+
+    def _validate_external_initial_density(self, initial_density, ao_basis):
+        """Validates a user-provided restricted AO initial density."""
+
+        assert_msg_critical(
+            self.scf_type == 'restricted',
+            'ScfDriver.compute: External initial density currently supports ' +
+            'restricted SCF only')
+
+        density = np.asarray(initial_density, dtype=np.float64)
+        nao = ao_basis.get_dimensions_of_basis()
+        assert_msg_critical(
+            density.ndim == 2 and density.shape == (nao, nao),
+            'ScfDriver.compute: External initial density must have shape ' +
+            f'({nao}, {nao})')
+        assert_msg_critical(
+            np.all(np.isfinite(density)),
+            'ScfDriver.compute: External initial density contains non-finite ' +
+            'values')
+        assert_msg_critical(
+            np.allclose(density, density.T, rtol=1.0e-12, atol=1.0e-12),
+            'ScfDriver.compute: External initial density must be symmetric')
+
+        return [np.ascontiguousarray(density)]
 
     def gen_initial_density_sad(self, molecule, ao_basis, min_basis):
         """
