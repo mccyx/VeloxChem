@@ -12,6 +12,7 @@
 - Exchange MP thresholds: `1e-6`, `1e-5`, and `1e-4`
 - Guanine-series Slurm array job: `23216525`
 - Guanine-sugar-phosphate Slurm array job: `23221585`
+- Exchange work-fraction Slurm array job: `23998744`
 
 The geometries came from `guanine-series.zip`. The BLYP inputs in that archive
 were not used because pure BLYP does not provide a meaningful exact-exchange
@@ -34,23 +35,28 @@ Exchange kernels.
 
 `overall ERI speedup = original FP64 Compute Fockmat / MP Compute Fockmat`
 
-| System | K threshold | Original FP64 (s) | MP ERI (s) | Overall ERI speedup | SCF time (s) | Iterations |
-|---|---:|---:|---:|---:|---:|---:|
-| guanine-4 | `1e-6` | 0.847000 | 0.550250 | 1.5393x | 7.42 | 11 |
-| guanine-4 | `1e-5` | 0.847000 | 0.524750 | 1.6141x | 7.05 | 11 |
-| guanine-4 | `1e-4` | 0.847000 | 0.501500 | 1.6889x | 6.84 | 11 |
-| guanine-8 | `1e-6` | 5.619250 | 3.247500 | 1.7303x | 44.21 | 12 |
-| guanine-8 | `1e-5` | 5.619250 | 3.107500 | 1.8083x | 42.24 | 12 |
-| guanine-8 | `1e-4` | 5.619250 | 3.011500 | 1.8659x | 41.03 | 12 |
-| guanine-12 | `1e-6` | 14.703750 | 8.390750 | 1.7524x | 110.88 | 12 |
-| guanine-12 | `1e-5` | 14.703750 | 8.004750 | 1.8369x | 106.20 | 12 |
-| guanine-12 | `1e-4` | 14.703750 | 7.761250 | 1.8945x | 103.38 | 12 |
-| guanine-sugar | `1e-6` | 36.281000 | 20.744500 | 1.7489x | 273.91 | 12 |
-| guanine-sugar | `1e-5` | 36.281000 | 19.817500 | 1.8308x | 262.57 | 12 |
-| guanine-sugar | `1e-4` | 36.281000 | 19.318250 | 1.8781x | 256.35 | 12 |
-| guanine-sugar-phosphate | `1e-6` | 111.661250 | 62.605250 | 1.7836x | 915.94 | 13 |
-| guanine-sugar-phosphate | `1e-5` | 111.661250 | 59.974500 | 1.8618x | 882.45 | 13 |
-| guanine-sugar-phosphate | `1e-4` | 111.661250 | 58.235000 | 1.9174x | 859.98 | 13 |
+The FP32 work fraction is the unweighted fraction of unscreened exchange tile
+pairs assigned to FP32, aggregated over all Fock interactions in the SCF run:
+
+`FP32 work fraction = sum(FP32 tile pairs) / sum(FP64 + FP32 tile pairs)`
+
+| System | K threshold | FP32 work fraction | Original FP64 (s) | MP ERI (s) | Overall ERI speedup | SCF time (s) | Iterations |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| guanine-4 | `1e-6` | 75.6661% | 0.847000 | 0.550250 | 1.5393x | 7.42 | 11 |
+| guanine-4 | `1e-5` | 84.7717% | 0.847000 | 0.524750 | 1.6141x | 7.05 | 11 |
+| guanine-4 | `1e-4` | 91.9963% | 0.847000 | 0.501500 | 1.6889x | 6.84 | 11 |
+| guanine-8 | `1e-6` | 83.3597% | 5.619250 | 3.247500 | 1.7303x | 44.21 | 12 |
+| guanine-8 | `1e-5` | 90.4068% | 5.619250 | 3.107500 | 1.8083x | 42.24 | 12 |
+| guanine-8 | `1e-4` | 95.3006% | 5.619250 | 3.011500 | 1.8659x | 41.03 | 12 |
+| guanine-12 | `1e-6` | 85.1951% | 14.703750 | 8.390750 | 1.7524x | 110.88 | 12 |
+| guanine-12 | `1e-5` | 91.6583% | 14.703750 | 8.004750 | 1.8369x | 106.20 | 12 |
+| guanine-12 | `1e-4` | 96.0002% | 14.703750 | 7.761250 | 1.8945x | 103.38 | 12 |
+| guanine-sugar | `1e-6` | 84.5619% | 36.281000 | 20.744500 | 1.7489x | 273.91 | 12 |
+| guanine-sugar | `1e-5` | 91.1575% | 36.281000 | 19.817500 | 1.8308x | 262.57 | 12 |
+| guanine-sugar | `1e-4` | 95.7109% | 36.281000 | 19.318250 | 1.8781x | 256.35 | 12 |
+| guanine-sugar-phosphate | `1e-6` | 83.7529% | 111.661250 | 62.605250 | 1.7836x | 915.94 | 13 |
+| guanine-sugar-phosphate | `1e-5` | 90.4447% | 111.661250 | 59.974500 | 1.8618x | 882.45 | 13 |
+| guanine-sugar-phosphate | `1e-4` | 95.1895% | 111.661250 | 58.235000 | 1.9174x | 859.98 | 13 |
 
 The original FP64 SCF times were `10.98`, `72.73`, `187.31`, `462.22`, and
 `1556.47 s`, in increasing system-size order.
