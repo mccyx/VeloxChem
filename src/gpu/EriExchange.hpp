@@ -10962,6 +10962,11 @@ computeExchangeFockDDDD25_RS_FP32(double*         mat_K,
                        const uint32_t* screen_cut_flat,
                        const uint32_t* displ_cuts);
 
+#include "PDDD_K4_variants.hpp.inc"
+#include "DDDD_K19_variants.hpp.inc"
+#include "DDDD_K16_variants.hpp.inc"
+#include "DDDP_K5_variants.hpp.inc"
+#include "DPDD_split_variants.hpp.inc"
 
 }  // namespace gpu
 

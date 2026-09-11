@@ -120982,5 +120982,10 @@ computeExchangeFockDDDD25_RS_FP32(double*         mat_K,
     }
 }
 
+#include "PDDD_K4_variants.cu.inc"
+#include "DDDD_K19_variants.cu.inc"
+#include "DDDD_K16_variants.cu.inc"
+#include "DDDP_K5_variants.cu.inc"
+#include "DPDD_split_variants.cu.inc"
 
 }  // namespace gpu

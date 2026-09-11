@@ -1,0 +1,50 @@
+{
+  "source": "src/gpu/EriExchange.cu",
+  "variants": {
+    "rs_k5": {
+      "tag": "K5_RS",
+      "layout": "_RS",
+      "groups": [
+        [
+          0
+        ],
+        [
+          1
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          4
+        ],
+        [
+          5
+        ]
+      ]
+    },
+    "old_k5": {
+      "tag": "K5_OLD",
+      "layout": "",
+      "groups": [
+        [
+          0
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          3
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          6
+        ]
+      ]
+    }
+  }
+}
