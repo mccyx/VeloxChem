@@ -1,0 +1,385 @@
+{
+  "source": "src/gpu/EriExchange.cu",
+  "variants": {
+    "M01": {
+      "merge": [
+        0,
+        1
+      ],
+      "boundaries": [
+        32,
+        40,
+        48,
+        63
+      ],
+      "precisions": {
+        "original": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M01",
+            "rs_sources": [
+              0,
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M01",
+            "rs_sources": [
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M01",
+            "rs_sources": [
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M01",
+            "rs_sources": [
+              4
+            ]
+          }
+        ],
+        "fp64": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M01_FP64",
+            "rs_sources": [
+              0,
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M01_FP64",
+            "rs_sources": [
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M01_FP64",
+            "rs_sources": [
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M01_FP64",
+            "rs_sources": [
+              4
+            ]
+          }
+        ],
+        "fp32": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M01_FP32",
+            "rs_sources": [
+              0,
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M01_FP32",
+            "rs_sources": [
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M01_FP32",
+            "rs_sources": [
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M01_FP32",
+            "rs_sources": [
+              4
+            ]
+          }
+        ]
+      }
+    },
+    "M12": {
+      "merge": [
+        1,
+        2
+      ],
+      "boundaries": [
+        16,
+        40,
+        48,
+        63
+      ],
+      "precisions": {
+        "original": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M12",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M12",
+            "rs_sources": [
+              1,
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M12",
+            "rs_sources": [
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M12",
+            "rs_sources": [
+              4
+            ]
+          }
+        ],
+        "fp64": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M12_FP64",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M12_FP64",
+            "rs_sources": [
+              1,
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M12_FP64",
+            "rs_sources": [
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M12_FP64",
+            "rs_sources": [
+              4
+            ]
+          }
+        ],
+        "fp32": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M12_FP32",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M12_FP32",
+            "rs_sources": [
+              1,
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M12_FP32",
+            "rs_sources": [
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M12_FP32",
+            "rs_sources": [
+              4
+            ]
+          }
+        ]
+      }
+    },
+    "M23": {
+      "merge": [
+        2,
+        3
+      ],
+      "boundaries": [
+        16,
+        32,
+        48,
+        63
+      ],
+      "precisions": {
+        "original": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M23",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M23",
+            "rs_sources": [
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M23",
+            "rs_sources": [
+              2,
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M23",
+            "rs_sources": [
+              4
+            ]
+          }
+        ],
+        "fp64": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M23_FP64",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M23_FP64",
+            "rs_sources": [
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M23_FP64",
+            "rs_sources": [
+              2,
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M23_FP64",
+            "rs_sources": [
+              4
+            ]
+          }
+        ],
+        "fp32": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M23_FP32",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M23_FP32",
+            "rs_sources": [
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M23_FP32",
+            "rs_sources": [
+              2,
+              3
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M23_FP32",
+            "rs_sources": [
+              4
+            ]
+          }
+        ]
+      }
+    },
+    "M34": {
+      "merge": [
+        3,
+        4
+      ],
+      "boundaries": [
+        16,
+        32,
+        40,
+        63
+      ],
+      "precisions": {
+        "original": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M34",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M34",
+            "rs_sources": [
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M34",
+            "rs_sources": [
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M34",
+            "rs_sources": [
+              3,
+              4
+            ]
+          }
+        ],
+        "fp64": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M34_FP64",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M34_FP64",
+            "rs_sources": [
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M34_FP64",
+            "rs_sources": [
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M34_FP64",
+            "rs_sources": [
+              3,
+              4
+            ]
+          }
+        ],
+        "fp32": [
+          {
+            "kernel": "computeExchangeFockPDDD0_K4_M34_FP32",
+            "rs_sources": [
+              0
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD1_K4_M34_FP32",
+            "rs_sources": [
+              1
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD2_K4_M34_FP32",
+            "rs_sources": [
+              2
+            ]
+          },
+          {
+            "kernel": "computeExchangeFockPDDD3_K4_M34_FP32",
+            "rs_sources": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

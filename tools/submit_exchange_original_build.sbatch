@@ -1,0 +1,29 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH --ntasks-per-node=1
+#SBATCH --hint=nomultithread
+#SBATCH -c 288
+#SBATCH -p gpugh
+#SBATCH -t 00:55:00
+#SBATCH -A pdc-software-test
+#SBATCH -x nid002890,nid002891
+#SBATCH -J exchange-original-build
+#SBATCH -o build_logs/exchange_original_build_%j.out
+#SBATCH -e build_logs/exchange_original_build_%j.err
+
+set -euo pipefail
+
+source_repo=/cfs/klemming/home/y/yuch4126/work/VeloxChem.gpu-dev-mixed-precision-3
+repo=/cfs/klemming/home/y/yuch4126/work/VeloxChem.gpu-dev-4-original
+log_dir="$source_repo/build_logs/exchange_original_build_${SLURM_JOB_ID}"
+mkdir -p "$log_dir"
+
+cd "$source_repo"
+source env.sh
+cp src/Makefile.setup "$repo/src/Makefile.setup"
+export VLXHOME="$repo"
+export PYTHONPATH="$repo/build/python${PYTHONPATH:+:$PYTHONPATH}"
+export PATH="$repo/build/bin:$PATH"
+cd "$repo"
+make -C src clean
+make -C src -j 144 2>&1 | tee "$log_dir/build.log"
